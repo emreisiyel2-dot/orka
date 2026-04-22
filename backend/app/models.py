@@ -142,3 +142,113 @@ class MemorySnapshot(Base):
     project: Mapped["Project"] = relationship(
         "Project", back_populates="memory_snapshots"
     )
+
+
+# ──────────────────────────────────────────────
+# Phase 2: Worker / Remote Execution Models
+# ──────────────────────────────────────────────
+
+
+class Worker(Base):
+    __tablename__ = "workers"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    hostname: Mapped[str] = mapped_column(String(255), nullable=True, default="")
+    platform: Mapped[str] = mapped_column(String(50), nullable=True, default="")
+    status: Mapped[str] = mapped_column(
+        SAEnum("online", "offline", "busy", name="worker_status"),
+        nullable=False,
+        default="online",
+    )
+    last_heartbeat: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    sessions: Mapped[list["WorkerSession"]] = relationship(
+        "WorkerSession", back_populates="worker", lazy="selectin"
+    )
+
+
+class WorkerSession(Base):
+    __tablename__ = "worker_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    worker_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workers.id"), nullable=False
+    )
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=False
+    )
+    agent_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agents.id"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(
+        SAEnum(
+            "idle",
+            "running",
+            "waiting_input",
+            "completed",
+            "error",
+            name="session_status",
+        ),
+        nullable=False,
+        default="idle",
+    )
+    last_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+    waiting_for_input: Mapped[bool] = mapped_column(default=False)
+    input_type: Mapped[str | None] = mapped_column(
+        SAEnum("enter", "yes_no", "text", "none", name="input_type_enum"),
+        nullable=True,
+        default="none",
+    )
+    input_prompt_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exit_code: Mapped[int | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+    worker: Mapped["Worker"] = relationship("Worker", back_populates="sessions")
+    task: Mapped["Task"] = relationship("Task")
+    agent: Mapped["Agent | None"] = relationship("Agent")
+    logs: Mapped[list["WorkerLog"]] = relationship(
+        "WorkerLog", back_populates="session", lazy="selectin"
+    )
+    decisions: Mapped[list["AutonomousDecision"]] = relationship(
+        "AutonomousDecision", back_populates="session", lazy="selectin"
+    )
+
+
+class WorkerLog(Base):
+    __tablename__ = "worker_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("worker_sessions.id"), nullable=False
+    )
+    level: Mapped[str] = mapped_column(
+        SAEnum("info", "warn", "error", "output", name="log_level"),
+        nullable=False,
+        default="info",
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    session: Mapped["WorkerSession"] = relationship(
+        "WorkerSession", back_populates="logs"
+    )
+
+
+class AutonomousDecision(Base):
+    __tablename__ = "autonomous_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("worker_sessions.id"), nullable=False
+    )
+    decision: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    auto_resolved: Mapped[bool] = mapped_column(default=True)
+    timestamp: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    session: Mapped["WorkerSession"] = relationship(
+        "WorkerSession", back_populates="decisions"
+    )

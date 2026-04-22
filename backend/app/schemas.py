@@ -113,3 +113,103 @@ class SummaryResponse(BaseModel):
     memory: Optional[MemorySnapshotResponse] = None
     overall_status: str
     message: str
+
+
+# ──────────────────────────────────────────────
+# Phase 2: Worker / Remote Execution
+# ──────────────────────────────────────────────
+
+
+class WorkerRegister(BaseModel):
+    name: str
+    hostname: str = ""
+    platform: str = ""
+
+
+class WorkerResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    hostname: str
+    platform: str
+    status: str
+    last_heartbeat: datetime
+    created_at: datetime
+
+
+class WorkerSessionCreate(BaseModel):
+    worker_id: str
+    task_id: str
+    agent_id: Optional[str] = None
+
+
+class WorkerSessionUpdate(BaseModel):
+    status: Optional[str] = None
+    last_output: Optional[str] = None
+    waiting_for_input: Optional[bool] = None
+    input_type: Optional[str] = None
+    input_prompt_text: Optional[str] = None
+    exit_code: Optional[int] = None
+
+
+class WorkerSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    worker_id: str
+    task_id: str
+    agent_id: Optional[str] = None
+    status: str
+    last_output: Optional[str] = None
+    waiting_for_input: bool
+    input_type: Optional[str] = None
+    input_prompt_text: Optional[str] = None
+    exit_code: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkerSessionDetail(WorkerSessionResponse):
+    logs: list["WorkerLogResponse"] = []
+    decisions: list["AutonomousDecisionResponse"] = []
+
+
+class WorkerLogCreate(BaseModel):
+    level: str = "info"
+    content: str
+
+
+class WorkerLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    session_id: str
+    level: str
+    content: str
+    timestamp: datetime
+
+
+class AutonomousDecisionCreate(BaseModel):
+    decision: str
+    reason: str
+    auto_resolved: bool = True
+
+
+class AutonomousDecisionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    session_id: str
+    decision: str
+    reason: str
+    auto_resolved: bool
+    timestamp: datetime
+
+
+class SessionInput(BaseModel):
+    input_value: str
+
+
+class TaskWithSessionsResponse(TaskResponse):
+    worker_sessions: list[WorkerSessionResponse] = []

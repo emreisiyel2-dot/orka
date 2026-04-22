@@ -3,17 +3,19 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import type { Project } from "@/lib/types";
+import type { Project, Worker } from "@/lib/types";
 import ProjectSelector from "@/components/ProjectSelector";
 
 export default function HomePage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     loadProjects();
+    loadWorkers();
   }, []);
 
   async function loadProjects() {
@@ -26,6 +28,15 @@ export default function HomePage() {
       setError(err instanceof Error ? err.message : "Failed to load projects");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadWorkers() {
+    try {
+      const data = await api.getWorkers();
+      setWorkers(data);
+    } catch {
+      // workers endpoint may not be available yet
     }
   }
 
@@ -56,9 +67,24 @@ export default function HomePage() {
               AI Command Center
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-healthy animate-pulse" />
-            <span className="text-xs text-zinc-500">System Online</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-healthy animate-pulse" />
+              <span className="text-xs text-zinc-500">System Online</span>
+            </div>
+            {workers.length > 0 ? (
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-healthy" />
+                <span className="text-xs text-zinc-400">
+                  {workers.filter((w) => w.status === "online" || w.status === "busy").length} Worker{workers.filter((w) => w.status === "online" || w.status === "busy").length !== 1 ? "s" : ""} Online
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-zinc-600" />
+                <span className="text-xs text-zinc-600">No Workers</span>
+              </div>
+            )}
           </div>
         </div>
       </header>

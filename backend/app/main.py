@@ -15,6 +15,8 @@ from app.api.agents import router as agents_router
 from app.api.activity import router as activity_router
 from app.api.memory import router as memory_router
 from app.api.summary import router as summary_router
+from app.api.workers import router as workers_router
+from app.api.sessions import router as sessions_router
 
 
 # Track connected WebSocket clients
@@ -91,6 +93,8 @@ app.include_router(agents_router)
 app.include_router(activity_router)
 app.include_router(memory_router)
 app.include_router(summary_router)
+app.include_router(workers_router)
+app.include_router(sessions_router)
 
 
 @app.get("/")

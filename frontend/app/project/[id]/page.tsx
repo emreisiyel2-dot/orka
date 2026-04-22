@@ -9,6 +9,7 @@ import TaskInput from "@/components/TaskInput";
 import ActivityFeed from "@/components/ActivityFeed";
 import MemoryPanel from "@/components/MemoryPanel";
 import SummaryPanel from "@/components/SummaryPanel";
+import WorkerSessionPanel from "@/components/WorkerSessionPanel";
 
 const REFRESH_INTERVAL = 5000;
 
@@ -226,6 +227,16 @@ export default function ProjectDashboard() {
           </section>
         </div>
       </main>
+
+      {/* Worker Sessions Section */}
+      <section className="border-t border-border px-4 sm:px-6 py-6">
+        <div className="max-w-[1600px] mx-auto">
+          <h2 className="text-sm font-medium text-zinc-400 mb-4 uppercase tracking-wider">
+            Worker Sessions
+          </h2>
+          <WorkerSessionPanel projectId={projectId} />
+        </div>
+      </section>
 
       {/* Tasks Section */}
       <section className="border-t border-border px-4 sm:px-6 py-6">

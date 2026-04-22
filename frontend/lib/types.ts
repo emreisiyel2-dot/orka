@@ -58,3 +58,50 @@ export interface Summary {
   overall_status: "healthy" | "blocked" | "idle";
   message: string;
 }
+
+export interface Worker {
+  id: string;
+  name: string;
+  hostname: string;
+  platform: string;
+  status: 'online' | 'offline' | 'busy';
+  last_heartbeat: string;
+  created_at: string;
+}
+
+export interface WorkerSession {
+  id: string;
+  worker_id: string;
+  task_id: string;
+  agent_id: string | null;
+  status: 'idle' | 'running' | 'waiting_input' | 'completed' | 'error';
+  last_output: string | null;
+  waiting_for_input: boolean;
+  input_type: 'enter' | 'yes_no' | 'text' | 'none' | null;
+  input_prompt_text: string | null;
+  exit_code: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkerLog {
+  id: string;
+  session_id: string;
+  level: 'info' | 'warn' | 'error' | 'output';
+  content: string;
+  timestamp: string;
+}
+
+export interface AutonomousDecision {
+  id: string;
+  session_id: string;
+  decision: string;
+  reason: string;
+  auto_resolved: boolean;
+  timestamp: string;
+}
+
+export interface WorkerSessionDetail extends WorkerSession {
+  logs: WorkerLog[];
+  decisions: AutonomousDecision[];
+}

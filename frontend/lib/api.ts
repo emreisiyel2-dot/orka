@@ -1,4 +1,4 @@
-import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary } from "./types";
+import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -70,4 +70,26 @@ export const api = {
   // Summary
   getSummary: (projectId: string) =>
     fetchJSON<Summary>(`${API_BASE}/api/summary/${projectId}`),
+
+  // Workers
+  getWorkers: () => fetchJSON<Worker[]>(`${API_BASE}/api/workers`),
+
+  // Sessions
+  getSessions: (projectId?: string) =>
+    fetchJSON<WorkerSession[]>(`${API_BASE}/api/sessions${projectId ? `?project_id=${projectId}` : ''}`),
+
+  getSessionDetail: (sessionId: string) =>
+    fetchJSON<WorkerSessionDetail>(`${API_BASE}/api/sessions/${sessionId}`),
+
+  sendSessionInput: (sessionId: string, input_value: string) =>
+    fetchJSON<WorkerSession>(`${API_BASE}/api/sessions/${sessionId}/input`, {
+      method: 'POST',
+      body: JSON.stringify({ input_value }),
+    }),
+
+  getSessionLogs: (sessionId: string) =>
+    fetchJSON<WorkerLog[]>(`${API_BASE}/api/sessions/${sessionId}/logs`),
+
+  getSessionDecisions: (sessionId: string) =>
+    fetchJSON<AutonomousDecision[]>(`${API_BASE}/api/sessions/${sessionId}/decisions`),
 };
