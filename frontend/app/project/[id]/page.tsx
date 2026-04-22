@@ -113,6 +113,15 @@ export default function ProjectDashboard() {
     }
   }
 
+  async function handleRetry(taskId: string) {
+    try {
+      await api.retryTask(taskId);
+      await Promise.all([loadTasks(), loadActivity()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to retry task");
+    }
+  }
+
   function getTaskForAgent(agent: Agent): Task | undefined {
     if (!agent.current_task_id) return undefined;
     return tasks.find((t) => t.id === agent.current_task_id);
@@ -264,6 +273,9 @@ export default function ProjectDashboard() {
                           Assigned to agent
                         </span>
                       )}
+                      {task.retry_count > 0 && (
+                        <span className="text-xs text-zinc-500">Retry #{task.retry_count}</span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -281,6 +293,14 @@ export default function ProjectDashboard() {
                         className="text-xs px-3 py-1.5 rounded-md bg-healthy/10 text-healthy hover:bg-healthy/20 transition-colors"
                       >
                         Complete
+                      </button>
+                    )}
+                    {task.status === "failed" && (
+                      <button
+                        onClick={() => handleRetry(task.id)}
+                        className="text-xs px-3 py-1.5 rounded-md bg-assigned/10 text-assigned hover:bg-assigned/20 transition-colors"
+                      >
+                        Retry
                       </button>
                     )}
                   </div>

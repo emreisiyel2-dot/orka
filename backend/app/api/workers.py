@@ -3,7 +3,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -60,6 +60,34 @@ async def heartbeat(worker_id: str, db: AsyncSession = Depends(get_db)):
     await db.flush()
     await db.refresh(worker)
     return worker
+
+
+@router.get("/{worker_id}/health")
+async def worker_health(worker_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Worker).where(Worker.id == worker_id))
+    worker = result.scalars().first()
+    if worker is None:
+        raise HTTPException(404, "Worker not found")
+
+    active = await db.execute(
+        select(func.count()).select_from(WorkerSession).where(
+            WorkerSession.worker_id == worker_id,
+            WorkerSession.status.in_(["running", "waiting_input"]),
+        )
+    )
+    total = await db.execute(
+        select(func.count()).select_from(WorkerSession).where(
+            WorkerSession.worker_id == worker_id,
+        )
+    )
+    return {
+        "id": worker.id,
+        "name": worker.name,
+        "status": worker.status,
+        "last_heartbeat": worker.last_heartbeat.isoformat(),
+        "active_sessions": active.scalar(),
+        "total_sessions": total.scalar(),
+    }
 
 
 # ── Task Fetching ────────────────────────────

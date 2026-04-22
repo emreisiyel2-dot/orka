@@ -99,6 +99,30 @@ async def complete_task(task_id: str, db: AsyncSession = Depends(get_db)):
     return task
 
 
+@router.post("/{task_id}/retry", response_model=TaskResponse)
+async def retry_task(task_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Task).where(Task.id == task_id))
+    task = result.scalars().first()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status not in ("failed", "completed"):
+        raise HTTPException(status_code=400, detail="Can only retry failed or completed tasks")
+
+    task.status = "pending"
+    task.assigned_agent_id = None
+    task.retry_count = (task.retry_count or 0) + 1
+
+    log = ActivityLog(
+        project_id=task.project_id,
+        action="task_retried",
+        details=f"Task '{task.content}' queued for retry (attempt {task.retry_count})",
+    )
+    db.add(log)
+    await db.flush()
+    await db.refresh(task)
+    return task
+
+
 @router.post("/{task_id}/distribute", response_model=TaskResponse)
 async def distribute_task(task_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Task).where(Task.id == task_id))

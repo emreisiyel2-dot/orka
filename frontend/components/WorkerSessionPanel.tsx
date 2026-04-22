@@ -99,6 +99,15 @@ export default function WorkerSessionPanel({ projectId }: WorkerSessionPanelProp
     }
   }
 
+  async function handleCancel(sessionId: string) {
+    try {
+      await api.cancelSession(sessionId);
+      await loadSessions();
+    } catch (err) {
+      console.error('Cancel failed:', err);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -190,13 +199,21 @@ export default function WorkerSessionPanel({ projectId }: WorkerSessionPanelProp
                   )}
 
                   {session.input_type === "enter" && (
-                    <button
-                      onClick={() => handleSendInput(session.id, "")}
-                      disabled={isSending}
-                      className="w-full px-3 py-1.5 rounded-md bg-error/10 text-error text-xs font-medium hover:bg-error/20 transition-colors disabled:opacity-50"
-                    >
-                      {isSending ? "Sending..." : "Press Enter"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleSendInput(session.id, "")}
+                        disabled={isSending}
+                        className="flex-1 px-3 py-1.5 rounded-md bg-error/10 text-error text-xs font-medium hover:bg-error/20 transition-colors disabled:opacity-50"
+                      >
+                        {isSending ? "Sending..." : "Press Enter"}
+                      </button>
+                      <button
+                        onClick={() => handleCancel(session.id)}
+                        className="px-3 py-1.5 rounded-md bg-error/10 text-error text-xs font-medium hover:bg-error/20 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   )}
 
                   {session.input_type === "yes_no" && (
@@ -214,6 +231,12 @@ export default function WorkerSessionPanel({ projectId }: WorkerSessionPanelProp
                         className="flex-1 px-3 py-1.5 rounded-md bg-error/10 text-error text-xs font-medium hover:bg-error/20 transition-colors disabled:opacity-50"
                       >
                         No
+                      </button>
+                      <button
+                        onClick={() => handleCancel(session.id)}
+                        className="px-3 py-1.5 rounded-md bg-error/10 text-error text-xs font-medium hover:bg-error/20 transition-colors"
+                      >
+                        Cancel
                       </button>
                     </div>
                   )}
@@ -239,8 +262,26 @@ export default function WorkerSessionPanel({ projectId }: WorkerSessionPanelProp
                       >
                         Send
                       </button>
+                      <button
+                        onClick={() => handleCancel(session.id)}
+                        className="px-3 py-1.5 rounded-md bg-error/10 text-error text-xs font-medium hover:bg-error/20 transition-colors"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Cancel button for running sessions */}
+              {(session.status === "running" && !session.waiting_for_input) && (
+                <div className="px-4 pb-3 border-t border-border pt-3">
+                  <button
+                    onClick={() => handleCancel(session.id)}
+                    className="w-full px-3 py-1.5 rounded-md bg-error/10 text-error text-xs font-medium hover:bg-error/20 transition-colors"
+                  >
+                    Cancel
+                  </button>
                 </div>
               )}
 
@@ -261,7 +302,7 @@ export default function WorkerSessionPanel({ projectId }: WorkerSessionPanelProp
                       <p className="text-xs text-zinc-600">No logs available</p>
                     ) : (
                       <div className="max-h-48 overflow-y-auto space-y-1">
-                        {sessionLogs.slice(-10).map((log) => (
+                        {sessionLogs.slice(0, 20).map((log) => (
                           <div key={log.id} className="flex items-start gap-2">
                             <span
                               className={`text-[10px] font-medium uppercase shrink-0 mt-0.5 ${LOG_LEVEL_COLORS[log.level]}`}

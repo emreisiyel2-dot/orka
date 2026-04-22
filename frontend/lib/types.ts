@@ -14,6 +14,7 @@ export interface Task {
   parent_task_id: string | null;
   created_at: string;
   updated_at: string;
+  retry_count: number;
 }
 
 export interface Agent {
@@ -104,4 +105,19 @@ export interface AutonomousDecision {
 export interface WorkerSessionDetail extends WorkerSession {
   logs: WorkerLog[];
   decisions: AutonomousDecision[];
+}
+
+export interface HealthStatus {
+  status: string;
+  online_workers: number;
+  active_sessions: number;
+}
+
+export interface WorkerHealthDetail {
+  id: string;
+  name: string;
+  status: string;
+  last_heartbeat: string;
+  active_sessions: number;
+  total_sessions: number;
 }

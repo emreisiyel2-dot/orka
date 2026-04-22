@@ -41,6 +41,7 @@ class TaskResponse(BaseModel):
     status: str
     assigned_agent_id: Optional[str] = None
     parent_task_id: Optional[str] = None
+    retry_count: int = 0
     created_at: datetime
     updated_at: datetime
 

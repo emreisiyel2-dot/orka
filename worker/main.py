@@ -12,6 +12,7 @@ Responsibilities:
 import asyncio
 import logging
 import platform
+import signal
 import socket
 import sys
 import uuid
@@ -215,7 +216,12 @@ async def task_polling_loop(
 
 # ── Main ───────────────────────────────────────────────────────────────
 
+_shutdown_event: asyncio.Event | None = None
+
+
 async def main() -> None:
+    global _shutdown_event
+
     logger.info("ORKA Worker starting ...")
 
     # Register
@@ -226,22 +232,51 @@ async def main() -> None:
     session_manager = SessionManager(API_BASE)
     task_runner = TaskRunner(session_manager)
 
+    # Set up graceful shutdown via signals
+    _shutdown_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def _signal_handler():
+        logger.info("Shutdown signal received — cleaning up ...")
+        _shutdown_event.set()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _signal_handler)
+
     logger.info(
         "Worker ready — polling every %ds, heartbeat every %ds",
         POLL_INTERVAL,
         HEARTBEAT_INTERVAL,
     )
 
-    # Run heartbeat and polling concurrently
-    await asyncio.gather(
-        heartbeat_loop(worker_id),
-        task_polling_loop(worker_id, session_manager, task_runner),
-    )
+    try:
+        # Run heartbeat and polling concurrently
+        await asyncio.gather(
+            heartbeat_loop(worker_id),
+            task_polling_loop(worker_id, session_manager, task_runner),
+        )
+    finally:
+        logger.info("Shutting down ...")
+        task_runner.shutdown()
+        await session_manager.close()
+        logger.info("Worker shutdown complete")
+
+
+async def run_with_recovery():
+    """Run the worker with automatic recovery on crashes."""
+    while True:
+        try:
+            await main()
+        except KeyboardInterrupt:
+            break
+        except Exception as exc:
+            logger.error("Worker crashed: %s — restarting in 10s", exc)
+            await asyncio.sleep(10)
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        asyncio.run(run_with_recovery())
     except KeyboardInterrupt:
         logger.info("Worker stopped by user")
         sys.exit(0)

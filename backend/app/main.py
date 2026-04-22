@@ -1,14 +1,15 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.database import init_db, seed_db, async_session
-from app.models import Agent
+from app.models import Agent, Worker, WorkerSession
 from app.api.projects import router as projects_router
 from app.api.tasks import router as tasks_router
 from app.api.agents import router as agents_router
@@ -56,6 +57,66 @@ async def _broadcast_agent_statuses() -> None:
         connected_clients.difference_update(disconnected)
 
 
+async def _cleanup_stuck_sessions() -> None:
+    """Mark sessions stuck in 'running' for over 10 minutes as errors."""
+    from datetime import timedelta
+    from app.models import WorkerSession, WorkerLog, Task, Agent, ActivityLog
+
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with async_session() as db:
+                cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+                result = await db.execute(
+                    select(WorkerSession).where(
+                        WorkerSession.status == "running",
+                        WorkerSession.updated_at < cutoff,
+                    )
+                )
+                stuck = result.scalars().all()
+                for session in stuck:
+                    session.status = "error"
+                    session.exit_code = -1
+                    db.add(WorkerLog(
+                        session_id=session.id,
+                        level="error",
+                        content="Session timed out — no activity for 10 minutes",
+                    ))
+                    # Mark task as failed
+                    t = await db.execute(select(Task).where(Task.id == session.task_id))
+                    task = t.scalars().first()
+                    if task and task.status == "in_progress":
+                        task.status = "failed"
+                if stuck:
+                    await db.commit()
+        except Exception:
+            pass
+
+
+async def _mark_stale_workers() -> None:
+    from datetime import timedelta
+    from app.models import Worker
+
+    while True:
+        await asyncio.sleep(30)
+        try:
+            async with async_session() as db:
+                cutoff = datetime.now(timezone.utc) - timedelta(seconds=90)
+                result = await db.execute(
+                    select(Worker).where(
+                        Worker.status == "online",
+                        Worker.last_heartbeat < cutoff,
+                    )
+                )
+                stale = result.scalars().all()
+                for w in stale:
+                    w.status = "offline"
+                if stale:
+                    await db.commit()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB and seed agents
@@ -64,15 +125,18 @@ async def lifespan(app: FastAPI):
 
     # Start background broadcast task
     broadcast_task = asyncio.create_task(_broadcast_agent_statuses())
+    cleanup_task = asyncio.create_task(_cleanup_stuck_sessions())
+    stale_worker_task = asyncio.create_task(_mark_stale_workers())
 
     yield
 
-    # Shutdown: cancel background task
-    broadcast_task.cancel()
-    try:
-        await broadcast_task
-    except asyncio.CancelledError:
-        pass
+    # Shutdown: cancel background tasks
+    for t in (broadcast_task, cleanup_task, stale_worker_task):
+        t.cancel()
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(title="ORKA API", lifespan=lifespan)
@@ -100,6 +164,18 @@ app.include_router(sessions_router)
 @app.get("/")
 async def root():
     return {"name": "ORKA API", "status": "running"}
+
+
+@app.get("/health")
+async def health():
+    async with async_session() as db:
+        worker_count = await db.execute(select(func.count()).select_from(Worker).where(Worker.status == "online"))
+        active_sessions = await db.execute(select(func.count()).select_from(WorkerSession).where(WorkerSession.status == "running"))
+    return {
+        "status": "healthy",
+        "online_workers": worker_count.scalar(),
+        "active_sessions": active_sessions.scalar(),
+    }
 
 
 @app.websocket("/ws")

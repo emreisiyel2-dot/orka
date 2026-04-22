@@ -1,4 +1,4 @@
-import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision } from "./types";
+import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -92,4 +92,19 @@ export const api = {
 
   getSessionDecisions: (sessionId: string) =>
     fetchJSON<AutonomousDecision[]>(`${API_BASE}/api/sessions/${sessionId}/decisions`),
+
+  // Health
+  getHealth: () => fetchJSON<HealthStatus>(`${API_BASE}/health`),
+
+  // Task retry
+  retryTask: (taskId: string) =>
+    fetchJSON<Task>(`${API_BASE}/api/tasks/${taskId}/retry`, { method: 'POST' }),
+
+  // Session cancel
+  cancelSession: (sessionId: string) =>
+    fetchJSON<WorkerSession>(`${API_BASE}/api/sessions/${sessionId}/cancel`, { method: 'POST' }),
+
+  // Worker health
+  getWorkerHealth: (workerId: string) =>
+    fetchJSON<WorkerHealthDetail>(`${API_BASE}/api/workers/${workerId}/health`),
 };

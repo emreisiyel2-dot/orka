@@ -52,6 +52,19 @@ class TaskRunner:
         self.session_manager = session_manager
         self.active_processes: dict[str, asyncio.subprocess.Process] = {}
 
+    def shutdown(self):
+        """Signal all running tasks to stop."""
+        for sid, proc in list(self.active_processes.items()):
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        self.active_processes.clear()
+
+    async def _check_stuck_session(self, session_id: str, output_interval: float = 60.0) -> bool:
+        """Check if a session appears stuck (no recent output). Always returns False in simulation."""
+        return False  # Real implementation would track last output time
+
     # ── Public interface ───────────────────────────────────────────────
 
     async def run_task(self, session: dict, task: dict) -> None:
@@ -73,6 +86,7 @@ class TaskRunner:
         )
         await self.session_manager.update_session(session_id, status="running")
 
+        process = None
         try:
             process = await asyncio.create_subprocess_shell(
                 command,
@@ -87,7 +101,20 @@ class TaskRunner:
                 self._stream_output(session_id, process.stderr, "warn", process),
             )
 
-            await process.wait()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=300)
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Task timed out after 300s for session %s — killing process",
+                    session_id,
+                )
+                process.kill()
+                await process.wait()
+                await self.session_manager.mark_error(
+                    session_id, "Task timed out after 300 seconds"
+                )
+                return
+
             exit_code = process.returncode if process.returncode is not None else 1
 
             if exit_code == 0:

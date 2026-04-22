@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import type { Project, Worker } from "@/lib/types";
+import type { Project, Worker, HealthStatus } from "@/lib/types";
 import ProjectSelector from "@/components/ProjectSelector";
 
 export default function HomePage() {
@@ -12,10 +12,12 @@ export default function HomePage() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
 
   useEffect(() => {
     loadProjects();
     loadWorkers();
+    loadHealth();
   }, []);
 
   async function loadProjects() {
@@ -37,6 +39,15 @@ export default function HomePage() {
       setWorkers(data);
     } catch {
       // workers endpoint may not be available yet
+    }
+  }
+
+  async function loadHealth() {
+    try {
+      const data = await api.getHealth();
+      setHealth(data);
+    } catch {
+      // health endpoint may not be available yet
     }
   }
 
@@ -69,22 +80,22 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-healthy animate-pulse" />
-              <span className="text-xs text-zinc-500">System Online</span>
+              {health ? (
+                <>
+                  <div className={`w-2 h-2 rounded-full ${health.online_workers > 0 ? 'bg-healthy animate-pulse' : 'bg-zinc-600'}`} />
+                  <span className="text-xs text-zinc-500">
+                    {health.online_workers} Worker{health.online_workers !== 1 ? 's' : ''} Online
+                  </span>
+                  <span className="text-xs text-zinc-600">|</span>
+                  <span className="text-xs text-zinc-500">{health.active_sessions} Active</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-zinc-600" />
+                  <span className="text-xs text-zinc-500">Connecting...</span>
+                </>
+              )}
             </div>
-            {workers.length > 0 ? (
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-healthy" />
-                <span className="text-xs text-zinc-400">
-                  {workers.filter((w) => w.status === "online" || w.status === "busy").length} Worker{workers.filter((w) => w.status === "online" || w.status === "busy").length !== 1 ? "s" : ""} Online
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-zinc-600" />
-                <span className="text-xs text-zinc-600">No Workers</span>
-              </div>
-            )}
           </div>
         </div>
       </header>

@@ -97,6 +97,7 @@ class Task(Base):
     parent_task_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("tasks.id"), nullable=True
     )
+    retry_count: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 

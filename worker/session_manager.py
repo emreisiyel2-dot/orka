@@ -229,3 +229,44 @@ class SessionManager:
             logger.error("Session %s marked error: %s", session_id, error_msg)
         except Exception as exc:
             logger.error("Failed to mark session %s as error: %s", session_id, exc)
+
+
+class LogBatcher:
+    """Batches log entries and flushes them periodically or when full."""
+
+    def __init__(self, session_manager: SessionManager, flush_interval: float = 2.0, max_size: int = 20):
+        self.session_manager = session_manager
+        self.flush_interval = flush_interval
+        self.max_size = max_size
+        self._buffer: list[tuple[str, str, str]] = []  # (session_id, level, content)
+        self._lock = asyncio.Lock()
+        self._flush_task: asyncio.Task | None = None
+
+    async def add(self, session_id: str, level: str, content: str):
+        async with self._lock:
+            self._buffer.append((session_id, level, content))
+            if len(self._buffer) >= self.max_size:
+                await self._flush()
+
+    async def _flush(self):
+        if not self._buffer:
+            return
+        batch = self._buffer.copy()
+        self._buffer.clear()
+        for session_id, level, content in batch:
+            await self.session_manager.add_log(session_id, level, content)
+
+    async def start(self):
+        self._flush_task = asyncio.create_task(self._periodic_flush())
+
+    async def _periodic_flush(self):
+        while True:
+            await asyncio.sleep(self.flush_interval)
+            async with self._lock:
+                await self._flush()
+
+    async def stop(self):
+        if self._flush_task:
+            self._flush_task.cancel()
+        async with self._lock:
+            await self._flush()

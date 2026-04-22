@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import WorkerSession, WorkerLog, AutonomousDecision, Task, Agent, Worker
+from app.models import WorkerSession, WorkerLog, AutonomousDecision, Task, Agent, Worker, ActivityLog
 from app.schemas import (
     WorkerSessionResponse,
     WorkerSessionDetail,
@@ -72,6 +72,54 @@ async def send_input(
         content=f"User provided input: {data.input_value}",
     )
     db.add(log)
+    await db.flush()
+    await db.refresh(session)
+    return session
+
+
+@router.post("/{session_id}/cancel", response_model=WorkerSessionResponse)
+async def cancel_session(session_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(WorkerSession).where(WorkerSession.id == session_id)
+    )
+    session = result.scalars().first()
+    if session is None:
+        raise HTTPException(404, "Session not found")
+    if session.status in ("completed", "error"):
+        raise HTTPException(400, "Cannot cancel a completed or errored session")
+
+    session.status = "error"
+    session.waiting_for_input = False
+    session.input_type = "none"
+    session.input_prompt_text = None
+    session.exit_code = -1
+
+    log = WorkerLog(
+        session_id=session.id,
+        level="warn",
+        content="Session cancelled by user",
+    )
+    db.add(log)
+
+    # Also mark the task as failed
+    task_result = await db.execute(select(Task).where(Task.id == session.task_id))
+    task = task_result.scalars().first()
+    if task and task.status == "in_progress":
+        task.status = "failed"
+        act_log = ActivityLog(
+            project_id=task.project_id,
+            action="task_failed",
+            details=f"Task '{task.content}' failed — session cancelled",
+        )
+        db.add(act_log)
+        # Reset agent
+        if task.assigned_agent_id:
+            ag = await db.execute(select(Agent).where(Agent.id == task.assigned_agent_id))
+            agent = ag.scalars().first()
+            if agent:
+                agent.status = "idle"
+                agent.current_task_id = None
+
     await db.flush()
     await db.refresh(session)
     return session
