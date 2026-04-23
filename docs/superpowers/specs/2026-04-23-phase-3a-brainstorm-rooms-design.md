@@ -1,6 +1,6 @@
 # Phase 3A: Multi-Room Brainstorm System
 
-## Status: Approved
+## Status: Revised (v2 — incorporating critical improvements)
 
 ## Overview
 
@@ -14,6 +14,10 @@ ORKA evolves from task execution to idea incubation. Users describe ideas, and m
 - Brainstorm agents are separate from execution agents but architecturally compatible
 - Clean agent interface designed for future LLM integration
 - User can interrupt, steer, or finalize at any time
+- Brainstorm context MUST transfer to execution agents on spawn
+- Rotation is hybrid: frontend-triggered with backend auto-advance fallback
+- Skill detection is deterministic and keyword-based, not random
+- Simulated agents use multiple templates with variation
 
 ---
 
@@ -106,6 +110,83 @@ SimulatedBrainstormAgent implements this with per-type templates. In Phase 3B, L
 
 Each agent generates 1-3 contribution types per round based on conversation context.
 
+### Simulated Agent Variation
+
+Each agent type has **multiple response templates** per contribution type. On each invocation, a template is selected using a deterministic but varied strategy:
+
+```python
+class SimulatedBrainstormAgent(BrainstormAgentBase):
+    # Each agent type has 3-5 templates per contribution type
+    TEMPLATES = {
+        "orchestrator": {
+            "analysis": [
+                "Based on the idea '{idea}', I see {count} major areas to address: {areas}. Each has dependencies we need to map.",
+                "Looking at '{idea}', this breaks down into {areas}. The critical path runs through {primary_area}.",
+                ...
+            ],
+            "question": [...],
+            "suggestion": [...],
+        },
+        ...
+    }
+
+    def _pick_template(self, templates: list[str], round_number: int, agent_type: str) -> str:
+        """Deterministic selection: hash(round + agent_type + len(templates)) % len."""
+        idx = (round_number * 7 + hash(agent_type)) % len(templates)
+        return templates[idx]
+```
+
+This provides variation without randomness — same room always produces same output for reproducibility, but different rooms produce different phrasing.
+
+### Deterministic Skill Detection
+
+Skill detection uses a **keyword → skill mapping** with explicit relevance reasons:
+
+```python
+SKILL_RULES = {
+    "web_development": {
+        "keywords": ["web", "website", "app", "dashboard", "frontend", "react", "nextjs", "landing page"],
+        "skills": [
+            {"name": "Frontend Development", "description": "UI/UX implementation", "reason": "Project involves web interface development"},
+            {"name": "Responsive Design", "description": "Mobile-friendly layouts", "reason": "Web project needs cross-device support"},
+        ]
+    },
+    "api_backend": {
+        "keywords": ["api", "backend", "server", "database", "rest", "endpoint", "microservice"],
+        "skills": [
+            {"name": "Backend Development", "description": "API and data layer", "reason": "Project requires server-side logic"},
+            {"name": "Database Design", "description": "Schema and queries", "reason": "Backend projects typically need data persistence"},
+        ]
+    },
+    "mobile": {
+        "keywords": ["mobile", "ios", "android", "react native", "app store"],
+        "skills": [...]
+    },
+    ...
+}
+
+class SkillDetector:
+    def detect(self, idea_text: str, agent_messages: list) -> list[dict]:
+        """Match idea + agent discussion against keyword rules.
+        Returns list of suggested skills with relevance reasons."""
+        matched_rules = set()
+        text_lower = idea_text.lower()
+        for rule_key, rule in SKILL_RULES.items():
+            for kw in rule["keywords"]:
+                if kw in text_lower:
+                    matched_rules.add(rule_key)
+                    break
+        # Also scan agent messages for additional signals
+        ...
+        return deduplicated_skills_with_reasons
+```
+
+Properties:
+- **Deterministic**: same input always produces same skill suggestions
+- **Explainable**: every suggestion includes a clear reason string
+- **Extendable**: add new rule groups without changing detection logic
+- **LLM-ready**: the `SkillDetector` class can be swapped for an LLM-based detector later
+
 ---
 
 ## API Design
@@ -158,8 +239,42 @@ GET    /api/brainstorms/{id}/plan
 POST   /api/brainstorms/{id}/spawn
   Confirms spawn plan, creates project workspace
   Creates: Project, initial Tasks, MemorySnapshot
+  Injects brainstorm context summary into project memory
   Sets room status to spawned, links project_id
   Response: { project_id: string, room: BrainstormRoom }
+```
+
+### Brainstorm → Execution Context Bridge (MANDATORY)
+
+When a room is spawned, the system generates a `BrainstormContextSummary` and injects it into the project's `MemorySnapshot`. This ensures execution agents can access the full brainstorm context.
+
+```python
+class BrainstormContextBridge:
+    async def generate_summary(
+        self, room: BrainstormRoom, messages: list[BrainstormMessage]
+    ) -> str:
+        """Synthesize brainstorm into structured context for execution agents."""
+        # Returns a formatted string containing:
+        # - Key decisions made during brainstorm
+        # - Architecture direction agreed upon
+        # - Risks identified by agents
+        # - Assumptions stated
+        # - Important discussion points
+        # - Accepted skills and their purpose
+```
+
+The summary is stored in `MemorySnapshot.next_step` field as a structured block. The `last_completed` field is set to "Project spawned from brainstorm". Execution agents read this on first task assignment.
+
+Format injected into memory:
+```
+[Brainstorm Context]
+Idea: {room.idea_text}
+Key Decisions: {extracted decisions}
+Architecture: {architecture direction}
+Risks: {identified risks}
+Assumptions: {stated assumptions}
+Skills Locked: {accepted skills with reasons}
+Agent Discussion Summary: {condensed highlights}
 ```
 
 ### Skills
@@ -175,10 +290,34 @@ PUT    /api/brainstorms/{id}/skills/{skill_id}
 
 ---
 
-## Auto-Rotation Flow
+## Auto-Rotation Flow (Hybrid Model)
+
+### Primary: Frontend-Triggered
+
+User calls `/advance` → agents generate responses → round completes.
+
+### Fallback: Backend Auto-Advance
+
+Background task in `main.py` monitors brainstorm rooms:
+
+```python
+async def _auto_advance_stale_rooms():
+    """If a brainstorming room has had no activity for 60s, auto-trigger next round."""
+    while True:
+        await asyncio.sleep(30)
+        rooms = find rooms where status == "brainstorming"
+            and current_round < max_rounds
+            and (now - updated_at) > 60 seconds
+        for room in rooms:
+            await advance_room(room.id)
+```
+
+This prevents stalled sessions while preserving user control. The 60-second timeout is generous enough that active users won't be preempted.
+
+### Full Lifecycle
 
 1. Room created → 6 BrainstormAgents auto-created with turn_order
-2. User calls `/advance` or system auto-triggers
+2. Frontend calls `/advance` OR backend auto-triggers after 60s idle
 3. Round N begins:
    - For each agent in turn_order:
      - Generate response using BrainstormAgentBase
@@ -195,7 +334,7 @@ PUT    /api/brainstorms/{id}/skills/{skill_id}
      - suggested_skills: BrainstormSkill[]
 5. Status → ready_to_spawn
 6. User reviews plan and confirms spawn
-7. Status → spawned, Project created
+7. Status → spawned, Project created, brainstorm context injected into project memory
 
 ### User Override Points
 
@@ -287,10 +426,13 @@ The following are NOT modified:
 ## Implementation Order
 
 1. Backend data models (BrainstormRoom, BrainstormMessage, BrainstormAgent, BrainstormSkill)
-2. BrainstormAgentBase + SimulatedBrainstormAgent
-3. Brainstorm API routes
-4. Auto-rotation logic + SpawnPlanGenerator
-5. Frontend types + API client methods
-6. Global Lobby page
-7. Brainstorm Room page
-8. Integration testing
+2. BrainstormAgentBase + SimulatedBrainstormAgent (with multi-template variation)
+3. SkillDetector (deterministic keyword-based detection)
+4. Brainstorm API routes (CRUD + flow control + skills)
+5. Auto-rotation logic + SpawnPlanGenerator
+6. BrainstormContextBridge (brainstorm → execution context injection)
+7. Backend auto-advance fallback timer (in main.py)
+8. Frontend types + API client methods
+9. Global Lobby page
+10. Brainstorm Room page
+11. Integration testing
