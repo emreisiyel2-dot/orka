@@ -400,16 +400,7 @@ class BrainstormMessage(Base):
     )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     message_type: Mapped[str] = mapped_column(
-        SAEnum(
-            "idea",
-            "question",
-            "analysis",
-            "risk",
-            "suggestion",
-            "plan",
-            "challenge",
-            name="brainstorm_msg_type",
-        ),
+        String(30),
         nullable=False,
         default="idea",
     )
