@@ -214,3 +214,53 @@ class SessionInput(BaseModel):
 
 class TaskWithSessionsResponse(TaskResponse):
     worker_sessions: list[WorkerSessionResponse] = []
+
+
+# ──────────────────────────────────────────────
+# Phase 3: Agent Coordination
+# ──────────────────────────────────────────────
+
+
+class AgentMessageCreate(BaseModel):
+    project_id: str
+    task_id: Optional[str] = None
+    from_agent_id: str
+    to_agent_id: str
+    message_type: str = "update"
+    content: str
+    context: Optional[str] = None
+
+
+class AgentMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    task_id: Optional[str] = None
+    from_agent_id: str
+    to_agent_id: str
+    message_type: str
+    content: str
+    context: Optional[str] = None
+    status: str
+    created_at: datetime
+    from_agent_name: Optional[str] = None
+    to_agent_name: Optional[str] = None
+
+
+class TaskDependencyCreate(BaseModel):
+    task_id: str
+    depends_on_task_id: str
+
+
+class TaskDependencyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    task_id: str
+    depends_on_task_id: str
+    status: str
+    created_at: datetime
+    satisfied_at: Optional[datetime] = None
+    task_content: Optional[str] = None
+    depends_on_content: Optional[str] = None

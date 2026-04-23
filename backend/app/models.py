@@ -253,3 +253,82 @@ class AutonomousDecision(Base):
     session: Mapped["WorkerSession"] = relationship(
         "WorkerSession", back_populates="decisions"
     )
+
+
+# ──────────────────────────────────────────────
+# Phase 3: Agent Coordination Models
+# ──────────────────────────────────────────────
+
+
+class AgentMessage(Base):
+    __tablename__ = "agent_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False
+    )
+    task_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=True
+    )
+    from_agent_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("agents.id"), nullable=False
+    )
+    to_agent_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("agents.id"), nullable=False
+    )
+    message_type: Mapped[str] = mapped_column(
+        SAEnum(
+            "handoff",
+            "request_info",
+            "response",
+            "blocker",
+            "update",
+            "complete",
+            name="message_type",
+        ),
+        nullable=False,
+        default="update",
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    context: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        SAEnum("pending", "read", "acted_on", name="message_status"),
+        nullable=False,
+        default="pending",
+    )
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    project: Mapped["Project"] = relationship("Project")
+    task: Mapped["Task | None"] = relationship("Task")
+    from_agent: Mapped["Agent"] = relationship(
+        "Agent", foreign_keys=[from_agent_id], lazy="selectin"
+    )
+    to_agent: Mapped["Agent"] = relationship(
+        "Agent", foreign_keys=[to_agent_id], lazy="selectin"
+    )
+
+
+class TaskDependency(Base):
+    __tablename__ = "task_dependencies"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=False
+    )
+    depends_on_task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        SAEnum("pending", "satisfied", name="dependency_status"),
+        nullable=False,
+        default="pending",
+    )
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    satisfied_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    task: Mapped["Task"] = relationship(
+        "Task", foreign_keys=[task_id], lazy="selectin"
+    )
+    depends_on_task: Mapped["Task"] = relationship(
+        "Task", foreign_keys=[depends_on_task_id], lazy="selectin"
+    )

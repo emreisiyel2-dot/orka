@@ -121,3 +121,29 @@ export interface WorkerHealthDetail {
   active_sessions: number;
   total_sessions: number;
 }
+
+export interface AgentMessage {
+  id: string;
+  project_id: string;
+  task_id: string | null;
+  from_agent_id: string;
+  to_agent_id: string;
+  message_type: 'handoff' | 'request_info' | 'response' | 'blocker' | 'update' | 'complete';
+  content: string;
+  context: string | null;
+  status: 'pending' | 'read' | 'acted_on';
+  created_at: string;
+  from_agent_name: string | null;
+  to_agent_name: string | null;
+}
+
+export interface TaskDependency {
+  id: string;
+  task_id: string;
+  depends_on_task_id: string;
+  status: 'pending' | 'satisfied';
+  created_at: string;
+  satisfied_at: string | null;
+  task_content: string | null;
+  depends_on_content: string | null;
+}

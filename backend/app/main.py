@@ -18,6 +18,8 @@ from app.api.memory import router as memory_router
 from app.api.summary import router as summary_router
 from app.api.workers import router as workers_router
 from app.api.sessions import router as sessions_router
+from app.api.messages import router as messages_router
+from app.api.dependencies import router as dependencies_router
 
 
 # Track connected WebSocket clients
@@ -117,6 +119,21 @@ async def _mark_stale_workers() -> None:
             pass
 
 
+async def _resolve_dependencies_loop() -> None:
+    """Periodically check and satisfy task dependencies."""
+    from app.services.coordination_service import CoordinationService
+
+    while True:
+        await asyncio.sleep(10)
+        try:
+            async with async_session() as db:
+                service = CoordinationService()
+                await service.check_and_resolve_dependencies(db)
+                await db.commit()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB and seed agents
@@ -127,11 +144,12 @@ async def lifespan(app: FastAPI):
     broadcast_task = asyncio.create_task(_broadcast_agent_statuses())
     cleanup_task = asyncio.create_task(_cleanup_stuck_sessions())
     stale_worker_task = asyncio.create_task(_mark_stale_workers())
+    dep_task = asyncio.create_task(_resolve_dependencies_loop())
 
     yield
 
     # Shutdown: cancel background tasks
-    for t in (broadcast_task, cleanup_task, stale_worker_task):
+    for t in (broadcast_task, cleanup_task, stale_worker_task, dep_task):
         t.cancel()
         try:
             await t
@@ -159,6 +177,8 @@ app.include_router(memory_router)
 app.include_router(summary_router)
 app.include_router(workers_router)
 app.include_router(sessions_router)
+app.include_router(messages_router)
+app.include_router(dependencies_router)
 
 
 @app.get("/")

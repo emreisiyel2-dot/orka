@@ -10,6 +10,7 @@ import ActivityFeed from "@/components/ActivityFeed";
 import MemoryPanel from "@/components/MemoryPanel";
 import SummaryPanel from "@/components/SummaryPanel";
 import WorkerSessionPanel from "@/components/WorkerSessionPanel";
+import CollaborationPanel from "@/components/CollaborationPanel";
 
 const REFRESH_INTERVAL = 5000;
 
@@ -226,13 +227,19 @@ export default function ProjectDashboard() {
             <ActivityFeed activities={activities} />
           </section>
 
-          {/* Column 3: Memory + Summary */}
+          {/* Column 3: Memory + Summary + Collaboration */}
           <section className="space-y-4">
             <h2 className="text-sm font-medium text-zinc-400 mb-3 uppercase tracking-wider">
               Memory
             </h2>
             <MemoryPanel memory={memory} />
             <SummaryPanel projectId={projectId} />
+            <div className="border-t border-border pt-4">
+              <h2 className="text-sm font-medium text-zinc-400 mb-3 uppercase tracking-wider">
+                Collaboration
+              </h2>
+              <CollaborationPanel projectId={projectId} />
+            </div>
           </section>
         </div>
       </main>

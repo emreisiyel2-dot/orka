@@ -1,4 +1,4 @@
-import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail } from "./types";
+import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -107,4 +107,24 @@ export const api = {
   // Worker health
   getWorkerHealth: (workerId: string) =>
     fetchJSON<WorkerHealthDetail>(`${API_BASE}/api/workers/${workerId}/health`),
+
+  // Messages
+  getMessages: (projectId: string, opts?: { task_id?: string; message_type?: string }) =>
+    fetchJSON<AgentMessage[]>(`${API_BASE}/api/messages?project_id=${projectId}${opts?.task_id ? `&task_id=${opts.task_id}` : ''}${opts?.message_type ? `&message_type=${opts.message_type}` : ''}`),
+
+  getAgentInbox: (agentId: string) =>
+    fetchJSON<AgentMessage[]>(`${API_BASE}/api/messages/agent/${agentId}/inbox`),
+
+  getProjectBlockers: (projectId: string) =>
+    fetchJSON<AgentMessage[]>(`${API_BASE}/api/messages/project/${projectId}/blockers`),
+
+  getProjectHandoffs: (projectId: string) =>
+    fetchJSON<AgentMessage[]>(`${API_BASE}/api/messages/project/${projectId}/handoffs`),
+
+  // Dependencies
+  getTaskDependencies: (taskId: string) =>
+    fetchJSON<TaskDependency[]>(`${API_BASE}/api/dependencies/task/${taskId}`),
+
+  getProjectDependencies: (projectId: string) =>
+    fetchJSON<TaskDependency[]>(`${API_BASE}/api/dependencies/project/${projectId}`),
 };
