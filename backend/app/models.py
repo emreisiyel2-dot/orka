@@ -332,3 +332,136 @@ class TaskDependency(Base):
     depends_on_task: Mapped["Task"] = relationship(
         "Task", foreign_keys=[depends_on_task_id], lazy="selectin"
     )
+
+
+# ──────────────────────────────────────────────
+# Phase 3A: Brainstorm System
+# ──────────────────────────────────────────────
+
+
+class BrainstormRoom(Base):
+    __tablename__ = "brainstorm_rooms"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    idea_text: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        SAEnum(
+            "brainstorming",
+            "refining",
+            "ready_to_spawn",
+            "spawned",
+            name="brainstorm_status",
+        ),
+        nullable=False,
+        default="brainstorming",
+    )
+    current_round: Mapped[int] = mapped_column(default=0)
+    max_rounds: Mapped[int] = mapped_column(default=3)
+    project_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=True
+    )
+    spawn_plan: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=_utcnow, onupdate=_utcnow
+    )
+
+    project: Mapped["Project | None"] = relationship("Project")
+    messages: Mapped[list["BrainstormMessage"]] = relationship(
+        back_populates="room", cascade="all, delete-orphan"
+    )
+    agents: Mapped[list["BrainstormAgent"]] = relationship(
+        back_populates="room", cascade="all, delete-orphan"
+    )
+    skills: Mapped[list["BrainstormSkill"]] = relationship(
+        back_populates="room", cascade="all, delete-orphan"
+    )
+
+
+class BrainstormMessage(Base):
+    __tablename__ = "brainstorm_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    room_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("brainstorm_rooms.id"), nullable=False
+    )
+    agent_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("brainstorm_agents.id"), nullable=True
+    )
+    agent_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    role: Mapped[str] = mapped_column(
+        SAEnum("user", "agent", "system", name="brainstorm_msg_role"),
+        nullable=False,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    message_type: Mapped[str] = mapped_column(
+        SAEnum(
+            "idea",
+            "question",
+            "analysis",
+            "risk",
+            "suggestion",
+            "plan",
+            "challenge",
+            name="brainstorm_msg_type",
+        ),
+        nullable=False,
+        default="idea",
+    )
+    round_number: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    room: Mapped["BrainstormRoom"] = relationship(back_populates="messages")
+    agent: Mapped["BrainstormAgent | None"] = relationship(
+        back_populates="messages"
+    )
+
+
+class BrainstormAgent(Base):
+    __tablename__ = "brainstorm_agents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    room_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("brainstorm_rooms.id"), nullable=False
+    )
+    agent_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    agent_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(
+        SAEnum("active", "paused", "completed", name="brainstorm_agent_status"),
+        nullable=False,
+        default="active",
+    )
+    turn_order: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    room: Mapped["BrainstormRoom"] = relationship(back_populates="agents")
+    messages: Mapped[list["BrainstormMessage"]] = relationship(
+        back_populates="agent"
+    )
+
+
+class BrainstormSkill(Base):
+    __tablename__ = "brainstorm_skills"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    room_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("brainstorm_rooms.id"), nullable=False
+    )
+    skill_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    relevance_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        SAEnum(
+            "suggested",
+            "accepted",
+            "rejected",
+            "locked",
+            name="brainstorm_skill_status",
+        ),
+        nullable=False,
+        default="suggested",
+    )
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    room: Mapped["BrainstormRoom"] = relationship(back_populates="skills")

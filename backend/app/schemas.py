@@ -264,3 +264,112 @@ class TaskDependencyResponse(BaseModel):
     satisfied_at: Optional[datetime] = None
     task_content: Optional[str] = None
     depends_on_content: Optional[str] = None
+
+
+# ──────────────────────────────────────────────
+# Phase 3A: Brainstorm System
+# ──────────────────────────────────────────────
+
+
+class BrainstormRoomCreate(BaseModel):
+    idea_text: str
+    title: str | None = None
+
+
+class BrainstormRoomResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    idea_text: str
+    status: str
+    current_round: int
+    max_rounds: int
+    project_id: str | None = None
+    spawn_plan: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class BrainstormAgentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    agent_type: str
+    agent_name: str
+    status: str
+    turn_order: int
+
+
+class BrainstormMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    room_id: str
+    agent_id: str | None = None
+    agent_type: str | None = None
+    role: str
+    content: str
+    message_type: str
+    round_number: int
+    created_at: datetime
+
+
+class BrainstormSkillResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    skill_name: str
+    description: str
+    relevance_reason: str
+    status: str
+
+
+class BrainstormRoomDetail(BrainstormRoomResponse):
+    messages: list[BrainstormMessageResponse] = []
+    agents: list[BrainstormAgentResponse] = []
+    skills: list[BrainstormSkillResponse] = []
+
+
+class BrainstormUserMessage(BaseModel):
+    content: str
+    target_agent_type: str | None = None
+
+
+class BrainstormSkillUpdate(BaseModel):
+    status: str
+
+
+# ──────────────────────────────────────────────
+# Phase 3A: Spawn Plan Schemas
+# ──────────────────────────────────────────────
+
+
+class SpawnPlanTask(BaseModel):
+    title: str
+    agent_type: str
+    depends_on: list[str] | None = None
+    priority: str = "medium"
+    estimated_complexity: str = "moderate"
+
+
+class SpawnPlanRisk(BaseModel):
+    description: str
+    severity: str
+    mitigation: str
+
+
+class SpawnPlanSkillItem(BaseModel):
+    name: str
+    description: str
+    reason: str
+
+
+class SpawnPlan(BaseModel):
+    project_name: str
+    description: str
+    tasks: list[SpawnPlanTask]
+    architecture_notes: list[str]
+    risks: list[SpawnPlanRisk]
+    next_steps: list[str]
+    skills: list[SpawnPlanSkillItem]
