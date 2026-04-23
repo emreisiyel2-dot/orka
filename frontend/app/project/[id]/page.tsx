@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import type { Project, Task, Agent, ActivityLog, MemorySnapshot } from "@/lib/types";
-import AgentCard from "@/components/AgentCard";
+import AgentCard from "@/components/ProjectAgentCard";
 import TaskInput from "@/components/TaskInput";
 import ActivityFeed from "@/components/ActivityFeed";
 import MemoryPanel from "@/components/MemoryPanel";

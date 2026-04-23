@@ -165,6 +165,8 @@ export interface BrainstormRoom {
   spawn_plan: string | null;
   created_at: string;
   updated_at: string;
+  mode: BrainstormMode;
+  synthesis: string | null;
 }
 
 export interface BrainstormAgent {
@@ -176,7 +178,7 @@ export interface BrainstormAgent {
 }
 
 export type BrainstormMsgRole = "user" | "agent" | "system";
-export type BrainstormMsgType = "idea" | "question" | "analysis" | "risk" | "suggestion" | "plan" | "challenge" | "response";
+export type BrainstormMsgType = "idea" | "question" | "analysis" | "risk" | "suggestion" | "plan" | "challenge" | "response" | "tradeoff" | "alternative" | "deep_dive" | "convergence" | "synthesis";
 
 export interface BrainstormMessage {
   id: string;
@@ -204,4 +206,16 @@ export interface BrainstormRoomDetail extends BrainstormRoom {
   messages: BrainstormMessage[];
   agents: BrainstormAgent[];
   skills: BrainstormSkill[];
+}
+
+export type BrainstormMode = "normal" | "deep_dive" | "exploration" | "decision";
+
+export interface BrainstormSynthesis {
+  round_reached: number;
+  total_messages: number;
+  key_decisions: string[];
+  risks_identified: string[];
+  open_questions: string[];
+  suggested_actions: string[];
+  summary_text: string;
 }

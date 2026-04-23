@@ -1,71 +1,98 @@
 "use client";
 
-import type { Agent, Task } from "@/lib/types";
+import type { BrainstormAgent } from "@/lib/types";
 
-interface AgentCardProps {
-  agent: Agent;
-  task?: Task;
-}
-
-const AGENT_ICONS: Record<Agent["type"], string> = {
-  orchestrator: "\u{1F3AF}",
-  backend: "\u{2699}\u{FE0F}",
-  frontend: "\u{1F3A8}",
-  qa: "\u{1F9EA}",
-  docs: "\u{1F4D6}",
-  memory: "\u{1F9E0}",
+type Props = {
+  agent: BrainstormAgent;
+  latestMessageType?: string | null;
 };
 
-const AGENT_LABELS: Record<Agent["type"], string> = {
-  orchestrator: "Orchestrator",
-  backend: "Backend",
-  frontend: "Frontend",
-  qa: "QA",
-  docs: "Docs",
-  memory: "Memory",
+const AGENT_CONFIG: Record<string, {
+  icon: string;
+  color: string;
+  bg: string;
+  border: string;
+  desc: string;
+}> = {
+  orchestrator: {
+    icon: "🎯",
+    color: "text-info",
+    bg: "bg-info/5",
+    border: "border-info/20",
+    desc: "Coordinates scope & priorities",
+  },
+  backend: {
+    icon: "⚙️",
+    color: "text-healthy",
+    bg: "bg-healthy/5",
+    border: "border-healthy/20",
+    desc: "APIs, databases, services",
+  },
+  frontend: {
+    icon: "🎨",
+    color: "text-purple-400",
+    bg: "bg-purple-400/5",
+    border: "border-purple-400/20",
+    desc: "UI components & user flows",
+  },
+  qa: {
+    icon: "🔍",
+    color: "text-error",
+    bg: "bg-error/5",
+    border: "border-error/20",
+    desc: "Risks, tests, edge cases",
+  },
+  docs: {
+    icon: "📝",
+    color: "text-amber-400",
+    bg: "bg-amber-400/5",
+    border: "border-amber-400/20",
+    desc: "Documentation & guides",
+  },
+  memory: {
+    icon: "🧠",
+    color: "text-cyan-400",
+    bg: "bg-cyan-400/5",
+    border: "border-cyan-400/20",
+    desc: "Progress tracking & summaries",
+  },
 };
 
-const STATUS_COLORS: Record<Agent["status"], { dot: string; bg: string; text: string }> = {
-  idle: { dot: "bg-healthy", bg: "bg-healthy/10", text: "text-healthy" },
-  working: { dot: "bg-working", bg: "bg-working/10", text: "text-working" },
-  error: { dot: "bg-error", bg: "bg-error/10", text: "text-error" },
+const STATUS_DISPLAY: Record<string, { label: string; dot: string }> = {
+  active: { label: "Active", dot: "bg-healthy" },
+  thinking: { label: "Thinking", dot: "bg-info animate-pulse" },
+  paused: { label: "Idle", dot: "bg-zinc-500" },
+  completed: { label: "Done", dot: "bg-zinc-600" },
 };
 
-export default function AgentCard({ agent, task }: AgentCardProps) {
-  const statusStyle = STATUS_COLORS[agent.status];
-  const icon = AGENT_ICONS[agent.type];
-  const label = AGENT_LABELS[agent.type];
+export default function AgentCard({ agent, latestMessageType }: Props) {
+  const config = AGENT_CONFIG[agent.agent_type] || AGENT_CONFIG.orchestrator;
+  const statusInfo = STATUS_DISPLAY[agent.status] || STATUS_DISPLAY.paused;
 
   return (
-    <div className="bg-base-50 border border-border rounded-lg p-4">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-base leading-none">{icon}</span>
-          <div>
-            <h3 className="text-sm font-medium">{agent.name}</h3>
-            <p className="text-[11px] text-zinc-500">{label}</p>
+    <div className={`${config.bg} border ${config.border} rounded-lg p-3 transition-all`}>
+      <div className="flex items-start gap-2.5">
+        <div className="text-lg leading-none mt-0.5">{config.icon}</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-1">
+            <span className={`text-xs font-semibold ${config.color}`}>
+              {agent.agent_name}
+            </span>
+            <div className="flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot}`} />
+              <span className="text-[10px] text-zinc-500">{statusInfo.label}</span>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${statusStyle.dot} ${agent.status === "working" ? "animate-pulse" : ""}`} />
-          <span className={`text-[11px] font-medium capitalize ${statusStyle.text}`}>
-            {agent.status}
-          </span>
+          <p className="text-[10px] text-zinc-500 mt-0.5 leading-tight">
+            {config.desc}
+          </p>
+          {latestMessageType && (
+            <span className="inline-block mt-1.5 px-1.5 py-0.5 rounded text-[9px] font-medium bg-zinc-800 text-zinc-400">
+              {latestMessageType}
+            </span>
+          )}
         </div>
       </div>
-
-      {task && (
-        <div className="mt-2 pt-2 border-t border-border">
-          <p className="text-[11px] text-zinc-500 mb-0.5">Current Task</p>
-          <p className="text-xs text-zinc-300 truncate">{task.content}</p>
-        </div>
-      )}
-
-      {!task && agent.status === "idle" && (
-        <div className="mt-2 pt-2 border-t border-border">
-          <p className="text-[11px] text-zinc-600">No active task</p>
-        </div>
-      )}
     </div>
   );
 }

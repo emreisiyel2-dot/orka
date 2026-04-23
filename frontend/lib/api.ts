@@ -1,4 +1,4 @@
-import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage } from "./types";
+import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage, BrainstormSynthesis } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -174,5 +174,17 @@ export const api = {
     fetchJSON<BrainstormSkill>(`${API_BASE}/api/brainstorms/${roomId}/skills/${skillId}`, {
       method: "PUT",
       body: JSON.stringify({ status }),
+    }),
+
+  // Brainstorm Mode & Synthesis
+  setBrainstormMode: (id: string, mode: string) =>
+    fetchJSON<BrainstormRoom>(`${API_BASE}/api/brainstorms/${id}/mode`, {
+      method: "PUT",
+      body: JSON.stringify({ mode }),
+    }),
+
+  synthesizeBrainstorm: (id: string) =>
+    fetchJSON<BrainstormSynthesis>(`${API_BASE}/api/brainstorms/${id}/synthesize`, {
+      method: "POST",
     }),
 };
