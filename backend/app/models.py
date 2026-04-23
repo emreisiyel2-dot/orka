@@ -358,6 +358,10 @@ class BrainstormRoom(Base):
     )
     current_round: Mapped[int] = mapped_column(default=0)
     max_rounds: Mapped[int] = mapped_column(default=3)
+    mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="normal"
+    )
+    synthesis: Mapped[str | None] = mapped_column(Text, nullable=True)
     project_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("projects.id"), nullable=True
     )

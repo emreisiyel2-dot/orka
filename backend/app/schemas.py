@@ -274,6 +274,7 @@ class TaskDependencyResponse(BaseModel):
 class BrainstormRoomCreate(BaseModel):
     idea_text: str
     title: str | None = None
+    mode: str = "normal"
 
 
 class BrainstormRoomResponse(BaseModel):
@@ -285,6 +286,8 @@ class BrainstormRoomResponse(BaseModel):
     status: str
     current_round: int
     max_rounds: int
+    mode: str
+    synthesis: str | None = None
     project_id: str | None = None
     spawn_plan: str | None = None
     created_at: datetime
@@ -338,6 +341,10 @@ class BrainstormUserMessage(BaseModel):
 
 class BrainstormSkillUpdate(BaseModel):
     status: str
+
+
+class BrainstormModeUpdate(BaseModel):
+    mode: str  # normal, deep_dive, exploration, decision
 
 
 # ──────────────────────────────────────────────

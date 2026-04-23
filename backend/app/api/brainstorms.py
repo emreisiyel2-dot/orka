@@ -29,6 +29,7 @@ from app.schemas import (
     BrainstormSkillResponse,
     BrainstormUserMessage,
     BrainstormSkillUpdate,
+    BrainstormModeUpdate,
     SpawnPlan,
 )
 from app.services.brainstorm_agent import (
@@ -56,6 +57,8 @@ def _room_to_response(room: BrainstormRoom) -> dict:
         "status": room.status,
         "current_round": room.current_round,
         "max_rounds": room.max_rounds,
+        "mode": room.mode,
+        "synthesis": room.synthesis,
         "project_id": room.project_id,
         "spawn_plan": room.spawn_plan,
         "created_at": room.created_at,
@@ -156,6 +159,7 @@ async def _generate_agent_round(room: BrainstormRoom, db: AsyncSession) -> list:
             idea_text=room.idea_text,
             conversation=conversation,
             round_number=room.current_round,
+            mode=room.mode,
         )
         msg = BrainstormMessage(
             room_id=room.id,
@@ -196,6 +200,45 @@ async def _transition_to_refining(room: BrainstormRoom, db: AsyncSession) -> Non
     room.updated_at = datetime.now(timezone.utc)
 
 
+async def _generate_synthesis(room: BrainstormRoom, db: AsyncSession) -> None:
+    """Generate synthesis summary when soft limit reached. Does NOT force transition."""
+    msgs_result = await db.execute(
+        select(BrainstormMessage)
+        .where(BrainstormMessage.room_id == room.id)
+        .order_by(BrainstormMessage.created_at)
+    )
+    messages = msgs_result.scalars().all()
+
+    # Extract key data from messages
+    decisions = [m for m in messages if m.message_type == "suggestion"]
+    risks = [m for m in messages if m.message_type == "risk"]
+    questions = [m for m in messages if m.message_type == "question"]
+
+    synthesis = {
+        "round_reached": room.current_round,
+        "total_messages": len(messages),
+        "key_decisions": [m.content[:100] for m in decisions[:5]],
+        "risks_identified": [m.content[:100] for m in risks[:5]],
+        "open_questions": [m.content[:100] for m in questions[:3]],
+        "suggested_actions": [
+            "Continue Brainstorming",
+            "Deep Dive This Topic",
+            "Generate Alternative Approaches",
+            "Finalize & Spawn Project",
+        ],
+        "summary_text": (
+            f"Round {room.current_round} complete. "
+            f"{len(decisions)} decisions proposed, "
+            f"{len(risks)} risks identified, "
+            f"{len(questions)} open questions remain."
+        ),
+    }
+
+    import json as _json
+    room.synthesis = _json.dumps(synthesis)
+    room.updated_at = datetime.now(timezone.utc)
+
+
 # ── CRUD ──────────────────────────────────────────────
 
 
@@ -208,6 +251,7 @@ async def create_room(
     room = BrainstormRoom(
         title=title,
         idea_text=payload.idea_text,
+        mode=payload.mode,
     )
     db.add(room)
     await db.flush()
@@ -277,18 +321,14 @@ async def advance_room(room_id: str, db: AsyncSession = Depends(get_db)):
     if room.status in ("refining", "ready_to_spawn"):
         raise HTTPException(400, "Room is past brainstorming phase")
 
-    if room.current_round >= room.max_rounds:
-        await _transition_to_refining(room, db)
-        await db.flush()
-        return []
-
     room.current_round += 1
     room.updated_at = datetime.now(timezone.utc)
 
     new_messages = await _generate_agent_round(room, db)
 
-    if room.current_round >= room.max_rounds:
-        await _transition_to_refining(room, db)
+    # Soft limit: when round >= max_rounds, generate synthesis suggestion
+    if room.current_round >= room.max_rounds and not room.synthesis:
+        await _generate_synthesis(room, db)
 
     await db.flush()
     return [_msg_to_response(m) for m in new_messages]
@@ -336,6 +376,7 @@ async def send_message(
                 idea_text=room.idea_text,
                 conversation=[{"content": payload.content}],
                 round_number=room.current_round,
+                mode=room.mode,
             )
             agent_msg = BrainstormMessage(
                 room_id=room.id,
@@ -367,6 +408,45 @@ async def skip_room(room_id: str, db: AsyncSession = Depends(get_db)):
     await db.flush()
     await db.refresh(room)
     return _room_to_response(room)
+
+
+# ── Mode & Synthesis ──────────────────────────────────
+
+
+@router.put("/{room_id}/mode", response_model=BrainstormRoomResponse)
+async def update_mode(
+    room_id: str,
+    payload: BrainstormModeUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    room = await _get_room_or_404(room_id, db)
+
+    if room.status == "spawned":
+        raise HTTPException(400, "Room already spawned")
+
+    valid_modes = ("normal", "deep_dive", "exploration", "decision")
+    if payload.mode not in valid_modes:
+        raise HTTPException(400, f"Invalid mode. Use: {', '.join(valid_modes)}")
+
+    room.mode = payload.mode
+    room.updated_at = datetime.now(timezone.utc)
+    await db.flush()
+    await db.refresh(room)
+    return _room_to_response(room)
+
+
+@router.post("/{room_id}/synthesize")
+async def synthesize_room(room_id: str, db: AsyncSession = Depends(get_db)):
+    room = await _get_room_or_404(room_id, db)
+
+    if room.status == "spawned":
+        raise HTTPException(400, "Room already spawned")
+
+    await _generate_synthesis(room, db)
+    await db.flush()
+
+    import json as _json
+    return _json.loads(room.synthesis) if room.synthesis else {}
 
 
 # ── Spawn ─────────────────────────────────────────────
