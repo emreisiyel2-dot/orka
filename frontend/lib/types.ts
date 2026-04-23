@@ -147,3 +147,61 @@ export interface TaskDependency {
   task_content: string | null;
   depends_on_content: string | null;
 }
+
+// ──────────────────────────────────────────────
+// Phase 3A: Brainstorm System
+// ──────────────────────────────────────────────
+
+export type BrainstormStatus = "brainstorming" | "refining" | "ready_to_spawn" | "spawned";
+
+export interface BrainstormRoom {
+  id: string;
+  title: string;
+  idea_text: string;
+  status: BrainstormStatus;
+  current_round: number;
+  max_rounds: number;
+  project_id: string | null;
+  spawn_plan: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BrainstormAgent {
+  id: string;
+  agent_type: string;
+  agent_name: string;
+  status: "active" | "paused" | "completed";
+  turn_order: number;
+}
+
+export type BrainstormMsgRole = "user" | "agent" | "system";
+export type BrainstormMsgType = "idea" | "question" | "analysis" | "risk" | "suggestion" | "plan" | "challenge" | "response";
+
+export interface BrainstormMessage {
+  id: string;
+  room_id: string;
+  agent_id: string | null;
+  agent_type: string | null;
+  role: BrainstormMsgRole;
+  content: string;
+  message_type: BrainstormMsgType;
+  round_number: number;
+  created_at: string;
+}
+
+export type BrainstormSkillStatus = "suggested" | "accepted" | "rejected" | "locked";
+
+export interface BrainstormSkill {
+  id: string;
+  skill_name: string;
+  description: string;
+  relevance_reason: string;
+  status: BrainstormSkillStatus;
+}
+
+export interface BrainstormRoomDetail extends BrainstormRoom {
+  messages: BrainstormMessage[];
+  agents: BrainstormAgent[];
+  skills: BrainstormSkill[];
+}

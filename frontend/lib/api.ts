@@ -1,4 +1,4 @@
-import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency } from "./types";
+import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -127,4 +127,52 @@ export const api = {
 
   getProjectDependencies: (projectId: string) =>
     fetchJSON<TaskDependency[]>(`${API_BASE}/api/dependencies/project/${projectId}`),
+
+  // Brainstorm Rooms
+  getBrainstormRooms: (status?: string) =>
+    fetchJSON<BrainstormRoom[]>(`${API_BASE}/api/brainstorms${status ? `?status=${status}` : ""}`),
+
+  createBrainstormRoom: (data: { idea_text: string; title?: string }) =>
+    fetchJSON<BrainstormRoom>(`${API_BASE}/api/brainstorms`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getBrainstormRoom: (id: string) =>
+    fetchJSON<BrainstormRoomDetail>(`${API_BASE}/api/brainstorms/${id}`),
+
+  deleteBrainstormRoom: (id: string) =>
+    fetchJSON<{ deleted: boolean }>(`${API_BASE}/api/brainstorms/${id}`, {
+      method: "DELETE",
+    }),
+
+  advanceBrainstormRoom: (id: string) =>
+    fetchJSON<BrainstormMessage[]>(`${API_BASE}/api/brainstorms/${id}/advance`, {
+      method: "POST",
+    }),
+
+  sendBrainstormMessage: (id: string, content: string, target_agent_type?: string) =>
+    fetchJSON<BrainstormMessage[]>(`${API_BASE}/api/brainstorms/${id}/message`, {
+      method: "POST",
+      body: JSON.stringify({ content, target_agent_type }),
+    }),
+
+  skipBrainstormRoom: (id: string) =>
+    fetchJSON<BrainstormRoom>(`${API_BASE}/api/brainstorms/${id}/skip`, {
+      method: "POST",
+    }),
+
+  spawnBrainstormRoom: (id: string) =>
+    fetchJSON<{ project_id: string; room: BrainstormRoom }>(`${API_BASE}/api/brainstorms/${id}/spawn`, {
+      method: "POST",
+    }),
+
+  getBrainstormSkills: (id: string) =>
+    fetchJSON<BrainstormSkill[]>(`${API_BASE}/api/brainstorms/${id}/skills`),
+
+  updateBrainstormSkill: (roomId: string, skillId: string, status: string) =>
+    fetchJSON<BrainstormSkill>(`${API_BASE}/api/brainstorms/${roomId}/skills/${skillId}`, {
+      method: "PUT",
+      body: JSON.stringify({ status }),
+    }),
 };
