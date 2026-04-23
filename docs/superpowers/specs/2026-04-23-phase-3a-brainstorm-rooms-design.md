@@ -32,7 +32,7 @@ ORKA evolves from task execution to idea incubation. Users describe ideas, and m
 | idea_text | Text | Original user idea |
 | status | Enum | brainstorming, refining, ready_to_spawn, spawned |
 | current_round | Integer | Starts at 0, increments per auto-rotation |
-| max_rounds | Integer | Default 3, configurable |
+| max_rounds | Integer | Hard limit: 4. Default 3. Configurable but capped at 4. After max_rounds reached, room is FORCED to refining state regardless of user action. Prevents infinite brainstorm loops. |
 | project_id | String(36) FK nullable | Set after spawn |
 | spawn_plan | Text nullable | JSON string with generated plan |
 | created_at | DateTime | |
@@ -348,21 +348,68 @@ This prevents stalled sessions while preserving user control. The 60-second time
 
 ## Spawn Plan Generation
 
-When transitioning to `refining`, the system synthesizes all brainstorm messages into a structured plan:
+When transitioning to `refining`, the system synthesizes all brainstorm messages into a structured plan.
+
+### Strict SpawnPlan Schema (machine-readable)
+
+```python
+class SpawnPlan(BaseModel):
+    project_name: str                    # Derived from idea_text
+    description: str                     # 2-3 sentence project summary
+    tasks: list[SpawnPlanTask]           # Ordered task list with assignments
+    architecture_notes: list[str]        # Key architectural decisions
+    risks: list[SpawnPlanRisk]           # Identified risks with severity
+    next_steps: list[str]                # Recommended first actions
+    skills: list[SpawnPlanSkill]         # Locked skills for this project
+
+class SpawnPlanTask(BaseModel):
+    title: str                           # Short task description
+    agent_type: str                      # Assigned agent type
+    depends_on: list[str] | None         # Titles of prerequisite tasks
+    priority: str                        # high, medium, low
+    estimated_complexity: str            # simple, moderate, complex
+
+class SpawnPlanRisk(BaseModel):
+    description: str                     # What could go wrong
+    severity: str                        # high, medium, low
+    mitigation: str                      # How to address it
+
+class SpawnPlanSkill(BaseModel):
+    name: str
+    description: str
+    reason: str                          # Why this skill is needed
+```
+
+This schema is enforced on generation, stored as JSON in `room.spawn_plan`, and used directly to create project tasks on spawn.
+
+### Generator
 
 ```python
 class SpawnPlanGenerator:
-    def generate(self, room: BrainstormRoom, messages: list[BrainstormMessage]) -> dict:
+    def generate(self, room: BrainstormRoom, messages: list[BrainstormMessage]) -> SpawnPlan:
         # Extract from conversation:
         # - Key themes and requirements
         # - Technical suggestions from each agent
         # - Identified risks
         # - Architecture recommendations
-        # - Suggested skills based on project type detection
-        return spawn_plan_dict
+        # - Suggested skills from SkillDetector
+        # Returns validated SpawnPlan (raises if schema invalid)
+        return spawn_plan
 ```
 
-The spawn plan is stored as JSON in `room.spawn_plan` and presented to the user for review.
+### Hard Round Limit Enforcement
+
+The `advance` endpoint and auto-advance background task both enforce:
+
+```python
+if room.current_round >= room.max_rounds:
+    room.status = "refining"
+    spawn_plan = SpawnPlanGenerator().generate(room, messages)
+    room.spawn_plan = spawn_plan.model_dump_json()
+    room.status = "ready_to_spawn"
+```
+
+`max_rounds` is capped at 4 at the model level. No room can brainstorm beyond round 4. This prevents infinite loops and forces convergence.
 
 ---
 
