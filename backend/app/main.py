@@ -20,6 +20,7 @@ from app.api.workers import router as workers_router
 from app.api.sessions import router as sessions_router
 from app.api.messages import router as messages_router
 from app.api.dependencies import router as dependencies_router
+from app.api.brainstorms import router as brainstorms_router
 
 
 # Track connected WebSocket clients
@@ -134,6 +135,37 @@ async def _resolve_dependencies_loop() -> None:
             pass
 
 
+async def _auto_advance_stale_rooms() -> None:
+    """Auto-advance brainstorm rooms idle for 60+ seconds."""
+    from datetime import timedelta
+    from app.models import BrainstormRoom
+
+    while True:
+        await asyncio.sleep(30)
+        try:
+            async with async_session() as db:
+                cutoff = datetime.now(timezone.utc) - timedelta(seconds=60)
+                result = await db.execute(
+                    select(BrainstormRoom).where(
+                        BrainstormRoom.status == "brainstorming",
+                        BrainstormRoom.updated_at < cutoff,
+                        BrainstormRoom.current_round < BrainstormRoom.max_rounds,
+                    )
+                )
+                stale = result.scalars().all()
+                for room in stale:
+                    room.current_round += 1
+                    room.updated_at = datetime.now(timezone.utc)
+                    from app.api.brainstorms import _generate_agent_round, _transition_to_refining
+                    await _generate_agent_round(room, db)
+                    if room.current_round >= room.max_rounds:
+                        await _transition_to_refining(room, db)
+                if stale:
+                    await db.commit()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB and seed agents
@@ -145,11 +177,12 @@ async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(_cleanup_stuck_sessions())
     stale_worker_task = asyncio.create_task(_mark_stale_workers())
     dep_task = asyncio.create_task(_resolve_dependencies_loop())
+    auto_advance_task = asyncio.create_task(_auto_advance_stale_rooms())
 
     yield
 
     # Shutdown: cancel background tasks
-    for t in (broadcast_task, cleanup_task, stale_worker_task, dep_task):
+    for t in (broadcast_task, cleanup_task, stale_worker_task, dep_task, auto_advance_task):
         t.cancel()
         try:
             await t
@@ -179,6 +212,7 @@ app.include_router(workers_router)
 app.include_router(sessions_router)
 app.include_router(messages_router)
 app.include_router(dependencies_router)
+app.include_router(brainstorms_router)
 
 
 @app.get("/")
