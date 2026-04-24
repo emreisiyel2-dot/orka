@@ -1,8 +1,11 @@
 import asyncio
+import os
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+_LLM_ENABLED = os.getenv("ORKA_LLM_ENABLED", "false").lower() == "true"
 
 from app.models import Agent, Task, ActivityLog
 from app.services.memory_service import MemoryService
@@ -43,8 +46,13 @@ class AgentSimulator:
         db.add(log)
         await db.commit()
 
-        # 5. Simulate work (3 seconds)
-        await asyncio.sleep(3)
+        # 5. Simulate work (3 seconds) — or route to real LLM
+        if _LLM_ENABLED:
+            # Real LLM mode: routing happens at call site, not here
+            # When enabled, the caller should use ModelRouter.route() instead
+            pass
+        else:
+            await asyncio.sleep(3)
 
         # 6. Set task status to completed
         task.status = "completed"
