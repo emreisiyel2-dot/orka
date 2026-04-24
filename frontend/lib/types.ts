@@ -219,3 +219,80 @@ export interface BrainstormSynthesis {
   suggested_actions: string[];
   summary_text: string;
 }
+
+// ──────────────────────────────────────────────
+// Phase 3B: Model Routing / Quota / Budget
+// ──────────────────────────────────────────────
+
+export interface ModelInfo {
+  id: string;
+  provider: string;
+  tier: "low" | "medium" | "high";
+  cost_per_1k_input: number;
+  cost_per_1k_output: number;
+  max_tokens: number;
+  strengths: string[];
+  speed: "fast" | "medium" | "slow";
+}
+
+export interface ProviderStatus {
+  name: string;
+  healthy: boolean;
+  quota_status: "available" | "throttled" | "exhausted" | "unavailable";
+  remaining_quota: number | null;
+  total_quota: number | null;
+  reset_at: string | null;
+  allow_paid_overage: boolean;
+  models: ModelInfo[];
+}
+
+export interface QuotaStatus {
+  id: string;
+  provider: string;
+  quota_type: string;
+  status: "available" | "throttled" | "exhausted";
+  remaining_quota: number | null;
+  total_quota: number | null;
+  reset_at: string | null;
+  allow_paid_overage: boolean;
+  updated_at: string;
+}
+
+export interface BudgetStatus {
+  daily_spend: number;
+  daily_soft_limit: number;
+  daily_hard_limit: number;
+  monthly_spend: number;
+  monthly_hard_limit: number;
+  state: "normal" | "throttled" | "blocked";
+}
+
+export interface RoutingDecision {
+  id: string;
+  task_id: string | null;
+  agent_type: string | null;
+  requested_tier: string;
+  selected_model: string;
+  selected_provider: string;
+  reason: string;
+  fallback_from: string | null;
+  quota_status: string;
+  cost_estimate: number;
+  actual_cost: number | null;
+  blocked_reason: string | null;
+  created_at: string;
+}
+
+export interface UsageRecord {
+  id: string;
+  task_id: string | null;
+  agent_type: string | null;
+  provider: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  latency_ms: number;
+  routing_decision_id: string | null;
+  created_at: string;
+}
