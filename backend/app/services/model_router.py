@@ -110,6 +110,15 @@ class ModelRouter:
         """Route a task to the best available model. Returns (response, decision)."""
         target_model = _tier_to_model(profile.budget_tier, self._config)
 
+        # Provider availability log
+        available_providers = self._registry.all()
+        if available_providers:
+            for pname, prov in available_providers.items():
+                models = [m.id for m in prov.get_models()]
+                print(f"[ModelRouter] provider='{pname}' models={models}")
+        else:
+            print(f"[ModelRouter] WARNING: no providers configured")
+
         # 1. Find provider with quota for target model
         provider, model_info, quota_status = await self._find_available_provider(
             target_model, profile, db

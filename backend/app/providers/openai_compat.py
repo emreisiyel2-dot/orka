@@ -16,13 +16,17 @@ _MODELS: list[ModelInfo] = [
 
 
 class OpenAICompatProvider(BaseProvider):
-    def __init__(self, name: str, base_url: str, api_key: str):
+    def __init__(self, name: str, base_url: str, api_key: str,
+                 custom_models: list[ModelInfo] | None = None):
         self.name = name
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
+        self._custom_models = custom_models
 
     def get_models(self) -> list[ModelInfo]:
-        return [m for m in _MODELS if m.provider == self.name or self.name in ("openai", "zai", "gemini")]
+        if self._custom_models is not None:
+            return list(self._custom_models)
+        return [m for m in _MODELS if m.provider == self.name]
 
     async def complete(
         self, prompt: str, model: str, max_tokens: int = 4096, temperature: float = 0.7
@@ -45,7 +49,7 @@ class OpenAICompatProvider(BaseProvider):
         latency = int((time.monotonic() - start) * 1000)
         usage = data.get("usage", {})
         choice = data["choices"][0]["message"]["content"]
-        info = next((m for m in _MODELS if m.id == model), None)
+        info = self._find_model_info(model)
         cost = 0.0
         if info:
             cost = (usage.get("prompt_tokens", 0) / 1000 * info.cost_per_1k_input
@@ -97,8 +101,13 @@ class OpenAICompatProvider(BaseProvider):
         except Exception:
             return False
 
+    def _find_model_info(self, model: str) -> ModelInfo | None:
+        if self._custom_models:
+            return next((m for m in self._custom_models if m.id == model), None)
+        return next((m for m in _MODELS if m.id == model), None)
+
     def estimate_cost(self, tokens: int, model: str) -> float:
-        info = next((m for m in _MODELS if m.id == model), None)
+        info = self._find_model_info(model)
         if info:
             return tokens / 1000 * info.cost_per_1k_input
         return 0.0

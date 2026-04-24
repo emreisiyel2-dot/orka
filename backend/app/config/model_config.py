@@ -11,6 +11,8 @@ class ProviderConfig:
     window_duration: int | None = None
     weekly_limit: float | None = None
     allow_paid_overage: bool = False
+    model_low: str | None = None
+    model_high: str | None = None
 
 
 @dataclass
@@ -44,22 +46,24 @@ def load_config() -> ModelRoutingConfig:
     providers: list[ProviderConfig] = []
 
     # OpenAI-compatible providers
-    for prefix, name in [
-        ("OPENAI", "openai"),
-        ("ZAI", "zai"),
-        ("GEMINI", "gemini"),
+    for prefix, name, default_url in [
+        ("OPENAI", "openai", "https://api.openai.com/v1"),
+        ("ZAI", "zai", ""),
+        ("GEMINI", "gemini", "https://generativelanguage.googleapis.com/v1beta/openai/"),
     ]:
         key = os.getenv(f"{prefix}_API_KEY", "")
-        url = os.getenv(f"{prefix}_BASE_URL", "")
-        if key:
+        url = os.getenv(f"{prefix}_BASE_URL", "") or default_url
+        if key and url:
             providers.append(ProviderConfig(
                 name=name,
-                base_url=url or f"https://api.{name.lower()}.com/v1",
+                base_url=url,
                 api_key=key,
                 quota_type=os.getenv(f"{prefix}_QUOTA_TYPE", "manual"),
                 window_duration=_int_env(f"{prefix}_WINDOW_DURATION"),
                 weekly_limit=_float_env(f"{prefix}_WEEKLY_LIMIT"),
                 allow_paid_overage=os.getenv(f"{prefix}_ALLOW_PAID_OVERAGE", "false").lower() == "true",
+                model_low=os.getenv(f"{prefix}_MODEL_LOW"),
+                model_high=os.getenv(f"{prefix}_MODEL_HIGH"),
             ))
 
     # OpenRouter
@@ -74,14 +78,33 @@ def load_config() -> ModelRoutingConfig:
             allow_paid_overage=os.getenv("OPENROUTER_ALLOW_PAID_OVERAGE", "false").lower() == "true",
         ))
 
+    # Derive tier models from provider config or env overrides
+    low_model = os.getenv("ORKA_LOW_TIER_MODEL", "")
+    medium_model = os.getenv("ORKA_MEDIUM_TIER_MODEL", "")
+    high_model = os.getenv("ORKA_HIGH_TIER_MODEL", "")
+
+    # If env overrides not set, derive from first configured provider
+    if providers and not low_model:
+        pc = providers[0]
+        low_model = pc.model_low or "gpt-4o-mini"
+        high_model = high_model or pc.model_high or low_model
+        medium_model = medium_model or high_model
+
+    if not low_model:
+        low_model = "gemini-2.5-flash"
+    if not medium_model:
+        medium_model = "claude-sonnet-4-6"
+    if not high_model:
+        high_model = "claude-opus-4-7"
+
     return ModelRoutingConfig(
         llm_enabled=os.getenv("ORKA_LLM_ENABLED", "false").lower() == "true",
         default_ai_mode=os.getenv("DEFAULT_AI_MODE", "quota_only"),
         allow_paid_overage=os.getenv("ALLOW_PAID_OVERAGE", "false").lower() == "true",
         fallback_policy=os.getenv("PROVIDER_FALLBACK_POLICY", "free_or_approved_only"),
-        low_tier_model=os.getenv("ORKA_LOW_TIER_MODEL", "gemini-2.5-flash"),
-        medium_tier_model=os.getenv("ORKA_MEDIUM_TIER_MODEL", "claude-sonnet-4-6"),
-        high_tier_model=os.getenv("ORKA_HIGH_TIER_MODEL", "claude-opus-4-7"),
+        low_tier_model=low_model,
+        medium_tier_model=medium_model,
+        high_tier_model=high_model,
         providers=providers,
         budget=BudgetDefaults(
             daily_soft_limit=_float_env("ORKA_DAILY_SOFT_LIMIT") or 5.0,
