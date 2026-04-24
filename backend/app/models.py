@@ -460,3 +460,78 @@ class BrainstormSkill(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     room: Mapped["BrainstormRoom"] = relationship(back_populates="skills")
+
+
+# ──────────────────────────────────────────────
+# Phase 3B: Model Routing / Quota / Budget
+# ──────────────────────────────────────────────
+
+
+class RoutingDecision(Base):
+    __tablename__ = "routing_decisions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=True
+    )
+    agent_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    requested_tier: Mapped[str] = mapped_column(String(20), nullable=False)
+    selected_model: Mapped[str] = mapped_column(String(100), nullable=False)
+    selected_provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason: Mapped[str] = mapped_column(String(50), nullable=False)
+    fallback_from: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    quota_status: Mapped[str] = mapped_column(String(30), nullable=False, default="available")
+    cost_estimate: Mapped[float] = mapped_column(default=0.0)
+    actual_cost: Mapped[float | None] = mapped_column(nullable=True)
+    blocked_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+    usage_records: Mapped[list["UsageRecord"]] = relationship(lazy="selectin")
+
+
+class UsageRecord(Base):
+    __tablename__ = "usage_records"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=True
+    )
+    agent_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    input_tokens: Mapped[int] = mapped_column(default=0)
+    output_tokens: Mapped[int] = mapped_column(default=0)
+    cost_usd: Mapped[float] = mapped_column(default=0.0)
+    latency_ms: Mapped[int] = mapped_column(default=0)
+    routing_decision_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("routing_decisions.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+
+class BudgetConfigDB(Base):
+    __tablename__ = "budget_configs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    daily_soft_limit: Mapped[float] = mapped_column(default=5.0)
+    daily_hard_limit: Mapped[float] = mapped_column(default=10.0)
+    monthly_hard_limit: Mapped[float] = mapped_column(default=100.0)
+    per_task_max_cost: Mapped[float] = mapped_column(default=1.0)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+
+class ProviderQuotaState(Base):
+    __tablename__ = "provider_quota_states"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    quota_type: Mapped[str] = mapped_column(String(30), nullable=False, default="manual")
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="available"
+    )
+    remaining_quota: Mapped[float | None] = mapped_column(nullable=True)
+    total_quota: Mapped[float | None] = mapped_column(nullable=True)
+    window_started_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    reset_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    allow_paid_overage: Mapped[bool] = mapped_column(default=False)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
