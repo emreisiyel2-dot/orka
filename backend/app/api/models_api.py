@@ -36,7 +36,7 @@ async def list_providers(db: AsyncSession = Depends(get_db)):
     registry = ProviderRegistry(config)
     quota = QuotaManager(config)
     result = []
-    for name, provider in registry.all():
+    for name, provider in registry.all().items():
         healthy = await provider.health_check()
         state = await quota.ensure_state(name, db)
         result.append(ProviderStatusResponse(
