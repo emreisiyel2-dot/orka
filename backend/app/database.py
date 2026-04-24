@@ -2,7 +2,7 @@ from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from app.models import Agent, Base, Worker, WorkerSession, WorkerLog, AutonomousDecision, AgentMessage, TaskDependency, BrainstormRoom, BrainstormMessage, BrainstormAgent, BrainstormSkill
+from app.models import Agent, Base, Worker, WorkerSession, WorkerLog, AutonomousDecision, AgentMessage, TaskDependency, BrainstormRoom, BrainstormMessage, BrainstormAgent, BrainstormSkill, UsageRecord, RoutingDecision, BudgetConfigDB, ProviderQuotaState
 
 DATABASE_URL = "sqlite+aiosqlite:///./orka.db"
 
@@ -45,4 +45,11 @@ async def seed_db() -> None:
         ]
 
         session.add_all(agents)
+        await session.commit()
+
+        # Seed default budget config
+        result = await session.execute(select(BudgetConfigDB))
+        if not result.scalars().first():
+            session.add(BudgetConfigDB())
+
         await session.commit()
