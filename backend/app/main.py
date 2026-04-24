@@ -21,6 +21,10 @@ from app.api.sessions import router as sessions_router
 from app.api.messages import router as messages_router
 from app.api.dependencies import router as dependencies_router
 from app.api.brainstorms import router as brainstorms_router
+from app.api.models_api import router as models_api_router
+from app.api.quota import router as quota_router
+from app.api.budget import router as budget_router
+from app.api.routing import router as routing_router
 
 
 # Track connected WebSocket clients
@@ -166,6 +170,24 @@ async def _auto_advance_stale_rooms() -> None:
             pass
 
 
+async def _check_quota_resets() -> None:
+    """Reset provider quotas when their reset_at time has passed."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            from app.config.model_config import load_config
+            from app.services.quota_manager import QuotaManager
+            config = load_config()
+            mgr = QuotaManager(config)
+            async with async_session() as db:
+                for state in await mgr.get_all_states(db):
+                    if state.reset_at and datetime.now(timezone.utc) >= state.reset_at:
+                        await mgr.reset_provider(state.provider, db)
+                await db.commit()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB and seed agents
@@ -178,11 +200,12 @@ async def lifespan(app: FastAPI):
     stale_worker_task = asyncio.create_task(_mark_stale_workers())
     dep_task = asyncio.create_task(_resolve_dependencies_loop())
     auto_advance_task = asyncio.create_task(_auto_advance_stale_rooms())
+    quota_reset_task = asyncio.create_task(_check_quota_resets())
 
     yield
 
     # Shutdown: cancel background tasks
-    for t in (broadcast_task, cleanup_task, stale_worker_task, dep_task, auto_advance_task):
+    for t in (broadcast_task, cleanup_task, stale_worker_task, dep_task, auto_advance_task, quota_reset_task):
         t.cancel()
         try:
             await t
@@ -213,6 +236,10 @@ app.include_router(sessions_router)
 app.include_router(messages_router)
 app.include_router(dependencies_router)
 app.include_router(brainstorms_router)
+app.include_router(models_api_router)
+app.include_router(quota_router)
+app.include_router(budget_router)
+app.include_router(routing_router)
 
 
 @app.get("/")
