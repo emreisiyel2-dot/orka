@@ -380,3 +380,105 @@ class SpawnPlan(BaseModel):
     risks: list[SpawnPlanRisk]
     next_steps: list[str]
     skills: list[SpawnPlanSkillItem]
+
+
+# ──────────────────────────────────────────────
+# Phase 3B: Model Routing / Quota / Budget
+# ──────────────────────────────────────────────
+
+
+class ModelInfoResponse(BaseModel):
+    id: str
+    provider: str
+    tier: str
+    cost_per_1k_input: float
+    cost_per_1k_output: float
+    max_tokens: int
+    strengths: list[str] = []
+    speed: str = "medium"
+
+
+class ProviderStatusResponse(BaseModel):
+    name: str
+    healthy: bool
+    quota_status: str
+    remaining_quota: float | None = None
+    total_quota: float | None = None
+    reset_at: datetime | None = None
+    allow_paid_overage: bool = False
+    models: list[ModelInfoResponse] = []
+
+
+class UsageRecordResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    task_id: str | None = None
+    agent_type: str | None = None
+    provider: str
+    model: str
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    latency_ms: int
+    routing_decision_id: str | None = None
+    created_at: datetime
+
+
+class RoutingDecisionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    task_id: str | None = None
+    agent_type: str | None = None
+    requested_tier: str
+    selected_model: str
+    selected_provider: str
+    reason: str
+    fallback_from: str | None = None
+    quota_status: str
+    cost_estimate: float
+    actual_cost: float | None = None
+    blocked_reason: str | None = None
+    created_at: datetime
+
+
+class BudgetStatusResponse(BaseModel):
+    daily_spend: float
+    daily_soft_limit: float
+    daily_hard_limit: float
+    monthly_spend: float
+    monthly_hard_limit: float
+    state: str
+
+
+class BudgetConfigUpdate(BaseModel):
+    daily_soft_limit: float | None = None
+    daily_hard_limit: float | None = None
+    monthly_hard_limit: float | None = None
+    per_task_max_cost: float | None = None
+
+
+class QuotaStatusResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    provider: str
+    quota_type: str
+    status: str
+    remaining_quota: float | None = None
+    total_quota: float | None = None
+    reset_at: datetime | None = None
+    allow_paid_overage: bool
+    updated_at: datetime
+
+
+class PaidOverrideApprove(BaseModel):
+    task_id: str
+    provider: str
+    reason: str
+
+
+class TaskModelOverride(BaseModel):
+    model_id: str
+    provider: str
