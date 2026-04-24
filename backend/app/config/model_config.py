@@ -78,17 +78,25 @@ def load_config() -> ModelRoutingConfig:
             allow_paid_overage=os.getenv("OPENROUTER_ALLOW_PAID_OVERAGE", "false").lower() == "true",
         ))
 
-    # Derive tier models from provider config or env overrides
+    # Derive tier models: prefer providers with custom model_low/model_high
     low_model = os.getenv("ORKA_LOW_TIER_MODEL", "")
     medium_model = os.getenv("ORKA_MEDIUM_TIER_MODEL", "")
     high_model = os.getenv("ORKA_HIGH_TIER_MODEL", "")
 
-    # If env overrides not set, derive from first configured provider
-    if providers and not low_model:
-        pc = providers[0]
-        low_model = pc.model_low or "gpt-4o-mini"
-        high_model = high_model or pc.model_high or low_model
-        medium_model = medium_model or high_model
+    if not low_model:
+        # Find the provider with custom models configured
+        custom_pc = next((p for p in providers if p.model_low), None)
+        if custom_pc:
+            low_model = custom_pc.model_low
+            high_model = high_model or custom_pc.model_high or low_model
+            medium_model = medium_model or high_model
+        elif providers:
+            # Fallback: use first provider's static catalog defaults
+            low_model = "gpt-4o-mini"
+            if not high_model:
+                high_model = "gpt-4o"
+            if not medium_model:
+                medium_model = "gpt-4o"
 
     if not low_model:
         low_model = "gemini-2.5-flash"
