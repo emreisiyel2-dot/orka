@@ -1,4 +1,4 @@
-import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage, BrainstormSynthesis } from "./types";
+import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage, BrainstormSynthesis, ModelInfo, ProviderStatus, QuotaStatus, BudgetStatus, RoutingDecision, UsageRecord } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -187,4 +187,40 @@ export const api = {
     fetchJSON<BrainstormSynthesis>(`${API_BASE}/api/brainstorms/${id}/synthesize`, {
       method: "POST",
     }),
+
+  // ──────────────────────────────────────────────
+  // Phase 3B: Model Routing / Quota / Budget
+  // ──────────────────────────────────────────────
+
+  // Models & Providers
+  getModels: () => fetchJSON<ModelInfo[]>(`${API_BASE}/api/models`),
+  getAvailableModels: () => fetchJSON<ModelInfo[]>(`${API_BASE}/api/models/available`),
+  getProviders: () => fetchJSON<ProviderStatus[]>(`${API_BASE}/api/providers`),
+
+  // Quota
+  getQuotaStatus: () => fetchJSON<QuotaStatus[]>(`${API_BASE}/api/quota/status`),
+  getProviderQuota: (provider: string) => fetchJSON<QuotaStatus>(`${API_BASE}/api/quota/${provider}`),
+  resetProviderQuota: (provider: string) => fetchJSON<QuotaStatus>(`${API_BASE}/api/quota/${provider}/reset`, { method: "POST" }),
+  approvePaidOverride: (data: { task_id: string; provider: string; reason: string }) =>
+    fetchJSON<RoutingDecision>(`${API_BASE}/api/quota/paid-override/approve`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  // Budget
+  getBudgetStatus: () => fetchJSON<BudgetStatus>(`${API_BASE}/api/budget/status`),
+  updateBudgetConfig: (data: Partial<{ daily_soft_limit: number; daily_hard_limit: number; monthly_hard_limit: number; per_task_max_cost: number }>) =>
+    fetchJSON<BudgetStatus>(`${API_BASE}/api/budget/config`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  // Routing
+  getRoutingDecisions: (limit?: number) =>
+    fetchJSON<RoutingDecision[]>(`${API_BASE}/api/routing/decisions${limit ? `?limit=${limit}` : ""}`),
+  getRoutingDecision: (id: string) => fetchJSON<RoutingDecision>(`${API_BASE}/api/routing/decisions/${id}`),
+
+  // Usage
+  getUsageRecords: (limit?: number) =>
+    fetchJSON<UsageRecord[]>(`${API_BASE}/api/routing/usage${limit ? `?limit=${limit}` : ""}`),
 };
