@@ -374,3 +374,69 @@ export interface AgentPerformance {
   by_execution_mode: Record<string, number>;
   by_provider: Record<string, number>;
 }
+
+// ──────────────────────────────────────────────
+// Phase 4: R&D / Improvement Lab
+// ──────────────────────────────────────────────
+
+export interface ImprovementProposal {
+  id: string;
+  project_id: string;
+  source_goal_id: string | null;
+  title: string;
+  status: "draft" | "under_review" | "approved" | "rejected" | "converted_to_goal" | "archived";
+  problem_description: string;
+  evidence_summary: string;
+  suggested_solution: string;
+  expected_impact: string;
+  risk_level: "low" | "medium" | "high" | "critical";
+  implementation_effort: "trivial" | "simple" | "moderate" | "complex" | "major";
+  analysis_type: string;
+  affected_agents: string;
+  affected_areas: string;
+  related_run_ids: string;
+  related_goal_ids: string;
+  related_task_ids: string;
+  related_agent_type: string | null;
+  related_provider: string | null;
+  related_model: string | null;
+  guard_quota_impact: string;
+  guard_risk_assessment: string;
+  guard_approved_by: string | null;
+  guard_approved_at: string | null;
+  reviewed_by: string | null;
+  review_notes: string | null;
+  reviewed_at: string | null;
+  implementation_goal_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ApprovalGuard {
+  estimated_runs: number;
+  estimated_cost_usd: number;
+  requires_paid_provider: boolean;
+  budget_remaining_usd: number;
+  budget_fits: boolean;
+  risk_level: string;
+  affected_systems: string[];
+  has_breaking_changes: boolean;
+  rollback_possible: boolean;
+  rollback_plan: string;
+  can_proceed: boolean;
+  warnings: string[];
+  blocks: string[];
+}
+
+export interface ProposalConversion {
+  proposal: ImprovementProposal;
+  implementation_goal: Goal;
+  tasks_created: number;
+}
+
+export interface ProposalSummary {
+  project_id: string;
+  counts: Record<string, number>;
+  total: number;
+  recent_proposals: { id: string; title: string; status: string; risk_level: string }[];
+}

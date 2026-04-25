@@ -583,3 +583,82 @@ class AgentPerformanceResponse(BaseModel):
     retry_rate: float
     by_execution_mode: dict[str, int]
     by_provider: dict[str, int]
+
+
+# ──────────────────────────────────────────────
+# Phase 4: R&D / Improvement Lab
+# ──────────────────────────────────────────────
+
+
+class AnalysisRequest(BaseModel):
+    project_id: str
+    goal_id: str | None = None
+    analysis_types: list[str] | None = None
+
+
+class ProposalReview(BaseModel):
+    reviewer: str = "user"
+    notes: str | None = None
+
+
+class GuardConfirm(BaseModel):
+    reviewer: str = "user"
+    notes: str | None = None
+    guard_confirmed: bool = False
+
+
+class ImprovementProposalResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    source_goal_id: str | None = None
+    title: str
+    status: str
+    problem_description: str
+    evidence_summary: str
+    suggested_solution: str
+    expected_impact: str
+    risk_level: str
+    implementation_effort: str
+    analysis_type: str
+    affected_agents: str
+    affected_areas: str
+    related_run_ids: str
+    related_goal_ids: str
+    related_task_ids: str
+    related_agent_type: str | None = None
+    related_provider: str | None = None
+    related_model: str | None = None
+    guard_quota_impact: str
+    guard_risk_assessment: str
+    guard_approved_by: str | None = None
+    guard_approved_at: datetime | None = None
+    reviewed_by: str | None = None
+    review_notes: str | None = None
+    reviewed_at: datetime | None = None
+    implementation_goal_id: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ApprovalGuardResponse(BaseModel):
+    estimated_runs: int
+    estimated_cost_usd: float
+    requires_paid_provider: bool
+    budget_remaining_usd: float
+    budget_fits: bool
+    risk_level: str
+    affected_systems: list[str]
+    has_breaking_changes: bool
+    rollback_possible: bool
+    rollback_plan: str
+    can_proceed: bool
+    warnings: list[str]
+    blocks: list[str]
+
+
+class ProposalConversionResponse(BaseModel):
+    proposal: ImprovementProposalResponse
+    implementation_goal: GoalResponse
+    tasks_created: int

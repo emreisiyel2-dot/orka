@@ -1,4 +1,4 @@
-import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage, BrainstormSynthesis, ModelInfo, ProviderStatus, QuotaStatus, BudgetStatus, RoutingDecision, UsageRecord, Goal, GoalProgress, Run, RunDetail, RunEvent, AgentPerformance } from "./types";
+import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage, BrainstormSynthesis, ModelInfo, ProviderStatus, QuotaStatus, BudgetStatus, RoutingDecision, UsageRecord, Goal, GoalProgress, Run, RunDetail, RunEvent, AgentPerformance, ImprovementProposal, ApprovalGuard, ProposalConversion, ProposalSummary } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -268,4 +268,61 @@ export const api = {
 
   getRunPerformance: (runId: string) =>
     fetchJSON<AgentPerformance[]>(`${API_BASE}/api/runs/${runId}/performance`),
+
+  // ──────────────────────────────────────────────
+  // Phase 4: R&D / Improvement Lab
+  // ──────────────────────────────────────────────
+
+  // Analysis
+  analyzeProject: (projectId: string, opts?: { goal_id?: string; analysis_types?: string[] }) =>
+    fetchJSON<ImprovementProposal[]>(`${API_BASE}/api/projects/${projectId}/research/analyze`, {
+      method: "POST",
+      body: JSON.stringify({ project_id: projectId, ...opts }),
+    }),
+
+  analyzeGoal: (goalId: string) =>
+    fetchJSON<ImprovementProposal[]>(`${API_BASE}/api/goals/${goalId}/research/analyze`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  // Proposals
+  getProposals: (projectId: string, status?: string) =>
+    fetchJSON<ImprovementProposal[]>(`${API_BASE}/api/projects/${projectId}/proposals${status ? `?status=${status}` : ""}`),
+
+  getProposalSummary: (projectId: string) =>
+    fetchJSON<ProposalSummary>(`${API_BASE}/api/projects/${projectId}/proposals/summary`),
+
+  getProposal: (proposalId: string) =>
+    fetchJSON<ImprovementProposal>(`${API_BASE}/api/proposals/${proposalId}`),
+
+  submitProposal: (proposalId: string) =>
+    fetchJSON<ImprovementProposal>(`${API_BASE}/api/proposals/${proposalId}/submit`, {
+      method: "PATCH",
+    }),
+
+  getProposalGuard: (proposalId: string) =>
+    fetchJSON<ApprovalGuard>(`${API_BASE}/api/proposals/${proposalId}/guard`),
+
+  approveProposal: (proposalId: string, guardConfirmed: boolean, notes?: string) =>
+    fetchJSON<ImprovementProposal>(`${API_BASE}/api/proposals/${proposalId}/approve`, {
+      method: "PATCH",
+      body: JSON.stringify({ guard_confirmed: guardConfirmed, reviewer: "user", notes }),
+    }),
+
+  convertProposal: (proposalId: string) =>
+    fetchJSON<ProposalConversion>(`${API_BASE}/api/proposals/${proposalId}/convert`, {
+      method: "PATCH",
+    }),
+
+  rejectProposal: (proposalId: string, reason?: string) =>
+    fetchJSON<ImprovementProposal>(`${API_BASE}/api/proposals/${proposalId}/reject`, {
+      method: "PATCH",
+      body: JSON.stringify({ reviewer: "user", notes: reason }),
+    }),
+
+  archiveProposal: (proposalId: string) =>
+    fetchJSON<ImprovementProposal>(`${API_BASE}/api/proposals/${proposalId}/archive`, {
+      method: "PATCH",
+    }),
 };

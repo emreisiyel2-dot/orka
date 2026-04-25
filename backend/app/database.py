@@ -2,7 +2,7 @@ from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
-from app.models import Agent, Base, Worker, WorkerSession, WorkerLog, AutonomousDecision, AgentMessage, TaskDependency, BrainstormRoom, BrainstormMessage, BrainstormAgent, BrainstormSkill, UsageRecord, RoutingDecision, BudgetConfigDB, ProviderQuotaState, Goal, Run, RunEvent
+from app.models import Agent, Base, Worker, WorkerSession, WorkerLog, AutonomousDecision, AgentMessage, TaskDependency, BrainstormRoom, BrainstormMessage, BrainstormAgent, BrainstormSkill, UsageRecord, RoutingDecision, BudgetConfigDB, ProviderQuotaState, Goal, Run, RunEvent, ImprovementProposal
 
 DATABASE_URL = "sqlite+aiosqlite:///./orka.db"
 

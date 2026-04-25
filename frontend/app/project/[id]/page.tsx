@@ -13,6 +13,7 @@ import WorkerSessionPanel from "@/components/WorkerSessionPanel";
 import CollaborationPanel from "@/components/CollaborationPanel";
 import GoalsPanel from "@/components/GoalsPanel";
 import RunsList from "@/components/RunsList";
+import ResearchPanel from "@/components/ResearchPanel";
 
 const REFRESH_INTERVAL = 5000;
 
@@ -251,6 +252,13 @@ export default function ProjectDashboard() {
         <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6">
           <GoalsPanel projectId={projectId} />
           <RunsList projectId={projectId} />
+        </div>
+      </section>
+
+      {/* R&D Lab Section */}
+      <section className="border-t border-border px-4 sm:px-6 py-6">
+        <div className="max-w-[1600px] mx-auto">
+          <ResearchPanel projectId={projectId} />
         </div>
       </section>
 

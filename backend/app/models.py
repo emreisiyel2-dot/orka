@@ -627,3 +627,74 @@ class RunEvent(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+
+# ──────────────────────────────────────────────
+# Phase 4: R&D / Improvement Lab
+# ──────────────────────────────────────────────
+
+
+class ImprovementProposal(Base):
+    __tablename__ = "improvement_proposals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False, index=True,
+    )
+    source_goal_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("goals.id"), nullable=True,
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+
+    # Strict status: draft | under_review | approved | rejected | converted_to_goal | archived
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="draft", index=True,
+    )
+
+    # Problem analysis
+    problem_description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    evidence_summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    # Proposed solution
+    suggested_solution: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    expected_impact: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    risk_level: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="medium",
+    )
+    implementation_effort: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="moderate",
+    )
+
+    # Evidence linking
+    related_run_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    related_goal_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    related_task_ids: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    related_agent_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    related_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    related_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Metadata
+    analysis_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="failure_pattern",
+    )
+    affected_agents: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    affected_areas: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+    # Approval safety guard
+    guard_quota_impact: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    guard_risk_assessment: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    guard_approved_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    guard_approved_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    # Review flow
+    reviewed_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    # Implementation link
+    implementation_goal_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("goals.id"), nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
