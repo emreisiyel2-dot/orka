@@ -484,6 +484,7 @@ class RoutingDecision(Base):
     cost_estimate: Mapped[float] = mapped_column(default=0.0)
     actual_cost: Mapped[float | None] = mapped_column(nullable=True)
     blocked_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    execution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="api")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     usage_records: Mapped[list["UsageRecord"]] = relationship(lazy="selectin")

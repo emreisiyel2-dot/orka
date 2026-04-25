@@ -440,6 +440,7 @@ class RoutingDecisionResponse(BaseModel):
     cost_estimate: float
     actual_cost: float | None = None
     blocked_reason: str | None = None
+    execution_mode: str = "api"
     created_at: datetime
 
 
