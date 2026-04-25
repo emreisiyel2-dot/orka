@@ -8,40 +8,13 @@ the dashboard for human input.
 
 import asyncio
 import logging
-import re
 import time
 
 from session_manager import SessionManager
+from cli_process import execute_cli, CLIExecutionResult, check_prompt
 
 logger = logging.getLogger("orka-worker.task_runner")
 
-# ── Pattern definitions ────────────────────────────────────────────────
-
-SAFE_PATTERNS: list[tuple[str, str, str, str]] = [
-    # (regex_pattern, auto_response, input_type, reason)
-    (r"press enter to continue", "\n", "enter", "Safe continuation prompt"),
-    (r"press any key", "\n", "enter", "Safe key prompt"),
-    (r"do you want to continue\??", "y\n", "yes_no", "Standard continuation"),
-    (r"\[y/N\]", "y\n", "yes_no", "Default yes for safe operation"),
-    (r"\[Y/n\]", "y\n", "yes_no", "Default yes"),
-    (r"are you sure you want to proceed\?", "y\n", "yes_no", "Standard confirmation"),
-    (r"continue\?\s*\[y/n\]", "y\n", "yes_no", "Standard continue"),
-    (r"is this ok\?", "y\n", "yes_no", "Standard ok prompt"),
-]
-
-CRITICAL_PATTERNS: list[tuple[str, None | str, str, str]] = [
-    # These will NOT be auto-resolved — they escalate to the dashboard
-    (r"delete.*permanent", None, "yes_no", "Destructive action detected"),
-    (r"overwrite.*existing", None, "yes_no", "Overwrite warning"),
-    (r"production", None, "yes_no", "Production system risk"),
-    (r"password|credential|secret|token", None, "text", "Credential-related prompt"),
-    (r"deploy.*prod", None, "yes_no", "Production deployment"),
-    (r"drop.*table|database", None, "yes_no", "Database destruction risk"),
-    (r"sudo|administrator", None, "yes_no", "Elevated privileges required"),
-    (r"irreversible|cannot be undone", None, "yes_no", "Irreversible operation"),
-]
-
-# Simulation mode flag — set to False to run real subprocesses
 SIMULATION_MODE = True
 
 
@@ -86,154 +59,36 @@ class TaskRunner:
         )
         await self.session_manager.update_session(session_id, status="running")
 
-        process = None
         try:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            self.active_processes[session_id] = process
+            async def on_output(line: str, stream: str):
+                level = "output" if stream == "stdout" else "warn"
+                await self.session_manager.add_log(session_id, level, line)
 
-            await asyncio.gather(
-                self._stream_output(session_id, process.stdout, "output", process),
-                self._stream_output(session_id, process.stderr, "warn", process),
+            async def on_prompt(prompt_text: str, input_type: str, reason: str) -> str | None:
+                return await self._escalate_prompt(session_id, prompt_text, input_type, reason)
+
+            result = await execute_cli(
+                command=command.split() if isinstance(command, str) else command,
+                timeout=300.0,
+                on_output=on_output,
+                on_prompt=on_prompt,
+                auto_resolve_safe=True,
             )
 
-            try:
-                await asyncio.wait_for(process.wait(), timeout=300)
-            except asyncio.TimeoutError:
-                logger.error(
-                    "Task timed out after 300s for session %s — killing process",
-                    session_id,
-                )
-                process.kill()
-                await process.wait()
+            if result.timed_out:
                 await self.session_manager.mark_error(
                     session_id, "Task timed out after 300 seconds"
                 )
-                return
-
-            exit_code = process.returncode if process.returncode is not None else 1
-
-            if exit_code == 0:
-                await self.session_manager.mark_completed(session_id, exit_code)
+            elif result.exit_code == 0:
+                await self.session_manager.mark_completed(session_id, result.exit_code)
             else:
                 await self.session_manager.mark_error(
-                    session_id, f"Process exited with code {exit_code}"
+                    session_id, f"Process exited with code {result.exit_code}"
                 )
 
         except Exception as exc:
             logger.exception("Task execution failed for session %s", session_id)
             await self.session_manager.mark_error(session_id, str(exc))
-        finally:
-            self.active_processes.pop(session_id, None)
-
-    # ── Output streaming ───────────────────────────────────────────────
-
-    async def _stream_output(
-        self,
-        session_id: str,
-        stream: asyncio.StreamReader | None,
-        level: str,
-        process: asyncio.subprocess.Process,
-    ) -> None:
-        """Read lines from a subprocess stream, forward to backend, and detect prompts."""
-        if stream is None:
-            return
-
-        while True:
-            line_bytes = await stream.readline()
-            if not line_bytes:
-                break
-            line = line_bytes.decode("utf-8", errors="replace").rstrip()
-
-            await self.session_manager.add_log(session_id, level, line)
-
-            is_prompt, auto_response, input_type, reason = await self._check_prompt(line)
-            if not is_prompt:
-                continue
-
-            if auto_response is not None:
-                # Safe prompt — auto-resolve
-                await self._handle_autonomous(
-                    session_id, line, auto_response, reason
-                )
-                if process.stdin and not process.stdin.is_closing():
-                    process.stdin.write(auto_response.encode("utf-8"))
-                    await process.stdin.drain()
-            else:
-                # Critical prompt — escalate to dashboard
-                input_value = await self._escalate_prompt(
-                    session_id, line, input_type, reason
-                )
-                if input_value is not None and process.stdin and not process.stdin.is_closing():
-                    process.stdin.write(f"{input_value}\n".encode("utf-8"))
-                    await process.stdin.drain()
-                else:
-                    # No input received (timeout / cancelled) — kill process
-                    process.kill()
-                    await self.session_manager.add_log(
-                        session_id,
-                        "error",
-                        "No dashboard input received; terminating process.",
-                    )
-
-    # ── Prompt detection ───────────────────────────────────────────────
-
-    async def _check_prompt(
-        self, line: str
-    ) -> tuple[bool, str | None, str, str]:
-        """
-        Check whether *line* matches a known prompt pattern.
-
-        Returns (is_prompt, auto_response_or_None, input_type, reason).
-        Critical patterns always return auto_response=None so the caller
-        knows to escalate.
-        """
-        line_lower = line.lower()
-
-        # Check critical patterns first (higher priority)
-        for pattern, _auto, input_type, reason in CRITICAL_PATTERNS:
-            if re.search(pattern, line_lower):
-                return (True, None, input_type, reason)
-
-        # Then check safe patterns
-        for pattern, auto_response, input_type, reason in SAFE_PATTERNS:
-            if re.search(pattern, line_lower):
-                return (True, auto_response, input_type, reason)
-
-        return (False, None, "", "")
-
-    # ── Autonomous resolution ──────────────────────────────────────────
-
-    async def _handle_autonomous(
-        self,
-        session_id: str,
-        prompt_text: str,
-        auto_response: str,
-        reason: str,
-    ) -> None:
-        """Auto-resolve a safe prompt and log the decision."""
-        display_response = auto_response.replace("\n", "\\n").strip()
-        decision = f"Auto-resolved prompt: responded '{display_response}'"
-
-        logger.info(
-            "Auto-resolving prompt on session %s: %s", session_id, reason
-        )
-
-        await self.session_manager.log_decision(
-            session_id,
-            decision=decision,
-            reason=f"{reason} | Prompt: {prompt_text.strip()}",
-            auto_resolved=True,
-        )
-        await self.session_manager.add_log(
-            session_id,
-            "info",
-            f"[ORKA] Auto-resolved: {reason} -> '{display_response}'",
-        )
 
     # ── Escalation ─────────────────────────────────────────────────────
 
@@ -344,12 +199,19 @@ class TaskRunner:
                 session_id, "output", safe_prompt
             )
 
-            is_prompt, auto_response, input_type, reason = await self._check_prompt(
+            is_prompt, auto_response, input_type, reason = check_prompt(
                 safe_prompt
             )
             if is_prompt and auto_response is not None:
-                await self._handle_autonomous(
-                    session_id, safe_prompt, auto_response, reason
+                await self.session_manager.add_log(
+                    session_id, "info",
+                    f"[ORKA] Auto-resolved: {reason} -> '{auto_response.strip()}'",
+                )
+                await self.session_manager.log_decision(
+                    session_id,
+                    decision=f"Auto-resolved prompt: responded '{auto_response.strip()}'",
+                    reason=f"{reason} | Prompt: {safe_prompt.strip()}",
+                    auto_resolved=True,
                 )
             await asyncio.sleep(0.5)
 
@@ -380,7 +242,7 @@ class TaskRunner:
                 session_id, "output", critical_prompt
             )
 
-            _, _, crit_input_type, crit_reason = await self._check_prompt(
+            _, _, crit_input_type, crit_reason = check_prompt(
                 critical_prompt
             )
             input_value = await self._escalate_prompt(
