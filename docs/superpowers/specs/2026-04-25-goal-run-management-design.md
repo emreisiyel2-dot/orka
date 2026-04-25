@@ -47,6 +47,8 @@ class Goal(Base):
     # "execution" (default) | "research" | "improvement"
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
     # "user" | "brainstorm" | "auto"
+    source_goal_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("goals.id"), nullable=True)
+    # R&D traceability: links improvement/research goals back to original goal
     target_description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
@@ -75,14 +77,30 @@ class Run(Base):
     provider: Mapped[str] = mapped_column(String(50), nullable=False, default="unknown")
     model: Mapped[str] = mapped_column(String(100), nullable=False, default="unknown")
     execution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="simulated")
-    # "cli" | "api" | "simulated"
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
-    # "running" | "completed" | "failed" | "retried" | "paused"
+    # "cli" | "api" | "simulated" — self-descriptive, do not rely only on RoutingDecision
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # Run status enum (strict):
+    #   "pending"    — created, not yet started
+    #   "running"    — actively executing
+    #   "completed"  — finished successfully
+    #   "failed"     — ended with error (see failure_type)
+    #   "retrying"   — previous run failed, new run about to start
+    #   "cancelled"  — user or system cancelled before completion
+    #   "blocked"    — quota exhausted or approval required
+    #   "paused"     — temporarily suspended, resumable
+    # Aligns with: CLIQuotaTracker states, Task retries, approval flows
     retry_count: Mapped[int] = mapped_column(default=0)
     started_at: Mapped[datetime] = mapped_column(default=_utcnow)
     ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Lightweight failure classification (nullable, only set when status="failed"):
+    #   "model_error"         — LLM or CLI model returned an error
+    #   "cli_error"           — CLI binary crashed or not found
+    #   "timeout"             — execution exceeded time limit
+    #   "quota_block"         — CLI or API quota exhausted
+    #   "validation_failed"   — output did not pass evaluator checks
     evaluator_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # "pending" | "passed" | "failed" | "skipped"
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
@@ -103,6 +121,12 @@ class RunEvent(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False)
     event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    execution_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # "cli" | "api" | "simulated" — links event to execution layer
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # e.g. "claude_code", "openai", "openrouter" — which provider handled this event
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # e.g. "claude-sonnet-4-6", "gpt-4o" — which model was used
     message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
@@ -205,6 +229,55 @@ agent_stats = {
 }
 ```
 
+## Goal Progress Calculation
+
+Goal progress is calculated from its tasks and their latest runs:
+
+```python
+progress = {
+    "total_tasks": 5,
+    "completed_tasks": 3,
+    "progress_percent": 60.0,
+    "status": "active"  # derived from task completion
+}
+```
+
+**Rule: A task is considered completed if its latest Run.status == "completed".**
+
+If a task has no runs yet, it counts as "pending". If its latest run is "failed" or "retrying", the task counts as "in_progress". Only "completed" runs move the progress bar forward.
+
+Progress derivation:
+- All tasks completed → goal status = "completed"
+- Any task failed (latest run) → goal status stays "active"
+- No tasks have runs → goal status = "planned"
+
+## Retry Semantics
+
+- A retry creates a **new Run** record with `retry_count` incremented
+- Previous Runs are **immutable** — their status, events, and timing never change
+- The new Run links to the same `task_id` and `goal_id`
+- `retry_count` on the new Run = previous run's `retry_count + 1`
+- The previous Run's status remains "failed" (not changed to "retrying")
+- The new Run starts with status "pending", then transitions to "running"
+
+This ensures a complete audit trail: every execution attempt is preserved.
+
+## Database Indexes
+
+Required indexes for query performance:
+
+```sql
+CREATE INDEX ix_runs_task_id ON runs(task_id);
+CREATE INDEX ix_runs_goal_id ON runs(goal_id);
+CREATE INDEX ix_runs_status ON runs(status);
+CREATE INDEX ix_runs_project_id ON runs(project_id);
+CREATE INDEX ix_run_events_run_id ON run_events(run_id, created_at);
+CREATE INDEX ix_goals_project_id ON goals(project_id);
+CREATE INDEX ix_goals_status ON goals(status);
+```
+
+In SQLAlchemy, add `index=True` to the relevant mapped_column definitions.
+
 ## What Stays the Same
 
 - All existing models (Project, Task, Agent, Worker, WorkerSession, etc.)
@@ -286,9 +359,10 @@ The Goal model supports future R&D capabilities through:
 - All R&D decisions logged
 
 **Data concepts for future:**
-- ImprovementGoal (uses Goal with type="improvement")
+- ImprovementGoal (uses Goal with type="improvement", source_goal_id points to original)
 - ResearchRun (uses Run with special metadata)
 - ImprovementProposal (new model when R&D phase is built)
+- Goal.source_goal_id enables tracing improvement → original execution goal
 
 ## Constraints
 
