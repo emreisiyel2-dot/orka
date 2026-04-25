@@ -29,6 +29,18 @@ class BudgetDefaults:
 
 
 @dataclass
+class CLIProviderConfig:
+    name: str               # "claude_code" | "glm_coding"
+    binary: str             # "claude" | "glm" or full path
+    default_args: list[str] = field(default_factory=list)
+    models: list[str] = field(default_factory=list)
+    max_concurrent: int = 3
+    max_sessions_per_hour: int = 20
+    timeout_seconds: int = 300
+    enabled: bool = True
+
+
+@dataclass
 class ModelRoutingConfig:
     llm_enabled: bool = False
     default_ai_mode: str = "quota_only"
@@ -40,6 +52,9 @@ class ModelRoutingConfig:
     providers: list[ProviderConfig] = field(default_factory=list)
     budget: BudgetDefaults = field(default_factory=BudgetDefaults)
     quota: QuotaConfig = field(default_factory=QuotaConfig)
+    cli_enabled: bool = False
+    cli_default: str = "claude_code"
+    cli_providers: list[CLIProviderConfig] = field(default_factory=list)
 
 
 def load_config() -> ModelRoutingConfig:
@@ -105,6 +120,10 @@ def load_config() -> ModelRoutingConfig:
     if not high_model:
         high_model = "claude-opus-4-7"
 
+    cli_providers = _load_cli_providers()
+    cli_enabled = os.getenv("ORKA_CLI_ENABLED", "false").lower() == "true"
+    cli_default = os.getenv("ORKA_CLI_DEFAULT", "claude_code")
+
     return ModelRoutingConfig(
         llm_enabled=os.getenv("ORKA_LLM_ENABLED", "false").lower() == "true",
         default_ai_mode=os.getenv("DEFAULT_AI_MODE", "quota_only"),
@@ -120,6 +139,9 @@ def load_config() -> ModelRoutingConfig:
             monthly_hard_limit=_float_env("ORKA_MONTHLY_HARD_LIMIT") or 100.0,
             per_task_max_cost=_float_env("ORKA_PER_TASK_MAX_COST") or 1.0,
         ),
+        cli_enabled=cli_enabled,
+        cli_default=cli_default,
+        cli_providers=cli_providers,
     )
 
 
@@ -131,3 +153,35 @@ def _float_env(key: str) -> float | None:
 def _int_env(key: str) -> int | None:
     v = os.getenv(key)
     return int(v) if v else None
+
+
+def _load_cli_providers() -> list[CLIProviderConfig]:
+    providers: list[CLIProviderConfig] = []
+
+    claude_binary = os.getenv("CLAUDE_CODE_BINARY", "claude")
+    claude_models_str = os.getenv("CLAUDE_CODE_MODELS", "")
+    providers.append(CLIProviderConfig(
+        name="claude_code",
+        binary=claude_binary,
+        default_args=os.getenv("CLAUDE_CODE_ARGS", "").split() if os.getenv("CLAUDE_CODE_ARGS") else [],
+        models=[m.strip() for m in claude_models_str.split(",") if m.strip()],
+        max_concurrent=int(os.getenv("CLAUDE_CODE_MAX_CONCURRENT", "3")),
+        max_sessions_per_hour=int(os.getenv("CLAUDE_CODE_MAX_SESSIONS_HOUR", "20")),
+        timeout_seconds=int(os.getenv("CLAUDE_CODE_TIMEOUT", os.getenv("ORKA_CLI_TIMEOUT", "300"))),
+        enabled=os.getenv("CLAUDE_CODE_ENABLED", "true").lower() == "true",
+    ))
+
+    glm_binary = os.getenv("GLM_CODING_BINARY", "glm")
+    glm_models_str = os.getenv("GLM_CODING_MODELS", "")
+    providers.append(CLIProviderConfig(
+        name="glm_coding",
+        binary=glm_binary,
+        default_args=os.getenv("GLM_CODING_ARGS", "").split() if os.getenv("GLM_CODING_ARGS") else [],
+        models=[m.strip() for m in glm_models_str.split(",") if m.strip()],
+        max_concurrent=int(os.getenv("GLM_CODING_MAX_CONCURRENT", "3")),
+        max_sessions_per_hour=int(os.getenv("GLM_CODING_MAX_SESSIONS_HOUR", "20")),
+        timeout_seconds=int(os.getenv("GLM_CODING_TIMEOUT", os.getenv("ORKA_CLI_TIMEOUT", "300"))),
+        enabled=os.getenv("GLM_CODING_ENABLED", "true").lower() == "true",
+    ))
+
+    return providers
