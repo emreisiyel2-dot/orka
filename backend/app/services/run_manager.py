@@ -111,7 +111,10 @@ class RunManager:
 
         now = datetime.now(timezone.utc)
         run.ended_at = now
-        run.duration_seconds = (now - run.started_at).total_seconds()
+        started = run.started_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        run.duration_seconds = (now - started).total_seconds()
         run.updated_at = now
 
         if run.error_message:
