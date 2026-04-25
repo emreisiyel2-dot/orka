@@ -8,6 +8,7 @@ from app.models import RoutingDecision
 from app.providers.base import BaseProvider, ModelInfo, ProviderResponse
 from app.providers.registry import ProviderRegistry
 from app.services.budget_manager import BudgetManager
+from app.services.cli_quota_tracker import CLIQuotaTracker
 from app.services.quota_manager import QuotaManager
 from app.services.usage_tracker import UsageTracker
 
@@ -20,6 +21,7 @@ class TaskProfile:
     context_size: int
     agent_type: str
     budget_tier: str      # "low" | "medium" | "high" | "dynamic"
+    execution_mode: str = "auto"
 
 
 _AGENT_TIER_DEFAULTS = {
@@ -40,11 +42,15 @@ _COMPLEXITY_KEYWORDS = {
     "simple": ["fix", "update", "add", "change", "rename", "typo"],
 }
 
+_CLI_PREFERRED_TASK_TYPES = {"code_gen", "review", "planning"}
+_API_PREFERRED_TASK_TYPES = {"docs", "analysis"}
+
 
 def classify_task(
     content: str,
     agent_type: str,
     importance: str = "normal",
+    has_cli_providers: bool = False,
 ) -> TaskProfile:
     budget_tier = _AGENT_TIER_DEFAULTS.get(agent_type, "medium")
     lower = content.lower()
@@ -73,6 +79,15 @@ def classify_task(
     if importance == "critical":
         budget_tier = "high"
 
+    # Determine execution mode
+    execution_mode = "api"
+    if task_type in _CLI_PREFERRED_TASK_TYPES and has_cli_providers:
+        execution_mode = "cli"
+    elif task_type in _API_PREFERRED_TASK_TYPES:
+        execution_mode = "api"
+    elif has_cli_providers:
+        execution_mode = "cli"
+
     return TaskProfile(
         complexity=complexity,
         importance=importance,
@@ -80,6 +95,7 @@ def classify_task(
         context_size=context_size,
         agent_type=agent_type,
         budget_tier=budget_tier,
+        execution_mode=execution_mode,
     )
 
 
@@ -99,6 +115,10 @@ class ModelRouter:
         self._quota = QuotaManager(config)
         self._budget = BudgetManager()
         self._tracker = UsageTracker()
+        self._cli_quota = CLIQuotaTracker(
+            max_concurrent=max(p.max_concurrent for p in config.cli_providers) if config.cli_providers else 3,
+            max_sessions_per_hour=max(p.max_sessions_per_hour for p in config.cli_providers) if config.cli_providers else 20,
+        )
 
     async def route(
         self,
@@ -108,9 +128,6 @@ class ModelRouter:
         db: AsyncSession,
     ) -> tuple[ProviderResponse | None, RoutingDecision | None]:
         """Route a task to the best available model. Returns (response, decision)."""
-        target_model = _tier_to_model(profile.budget_tier, self._config)
-
-        # Provider availability log
         available_providers = self._registry.all()
         if available_providers:
             for pname, prov in available_providers.items():
@@ -119,12 +136,127 @@ class ModelRouter:
         else:
             print(f"[ModelRouter] WARNING: no providers configured")
 
-        # 1. Find provider with quota for target model
+        execution_mode = self._resolve_execution_mode(profile)
+        print(f"[ModelRouter] execution_mode={execution_mode} task_type={profile.task_type} tier={profile.budget_tier}")
+
+        # Try CLI path if applicable
+        if execution_mode == "cli":
+            response, decision = await self._try_cli_route(
+                prompt, profile, task_id, db
+            )
+            if response is not None:
+                return response, decision
+            print(f"[ModelRouter] CLI route failed/blocked, falling back to API")
+
+        # Try API path
+        response, decision = await self._try_api_route(
+            prompt, profile, task_id, db, execution_mode
+        )
+        if response is not None:
+            return response, decision
+
+        # No provider available
+        decision = RoutingDecision(
+            task_id=task_id,
+            agent_type=profile.agent_type,
+            requested_tier=profile.budget_tier,
+            selected_model="none",
+            selected_provider="none",
+            reason="all_providers_exhausted",
+            fallback_from=None,
+            quota_status="exhausted",
+            cost_estimate=0.0,
+            blocked_reason="no_provider_with_quota",
+            execution_mode=execution_mode,
+        )
+        db.add(decision)
+        await db.flush()
+        return None, decision
+
+    def _resolve_execution_mode(self, profile: TaskProfile) -> str:
+        """Resolve 'auto' execution mode to a concrete mode."""
+        if profile.execution_mode != "auto":
+            return profile.execution_mode
+
+        has_cli = self._registry.has_cli_providers()
+        has_api = len(self._registry.all_by_mode()["api"]) > 0
+
+        if profile.task_type in _CLI_PREFERRED_TASK_TYPES and has_cli:
+            return "cli"
+        if profile.task_type in _API_PREFERRED_TASK_TYPES and has_api:
+            return "api"
+        if has_cli:
+            return "cli"
+        if has_api:
+            return "api"
+        return "simulated"
+
+    async def _try_cli_route(
+        self, prompt: str, profile: TaskProfile, task_id: str | None, db: AsyncSession
+    ) -> tuple[ProviderResponse | None, RoutingDecision | None]:
+        """Try to route via a CLI provider."""
+        cli_providers = self._registry.all_by_mode()["cli"]
+        if not cli_providers:
+            return None, None
+
+        provider = None
+        quota_status = "available"
+        for cp in cli_providers:
+            quota_status = self._cli_quota.check_available(cp.name)
+            if quota_status != "blocked":
+                healthy = await cp.health_check()
+                if healthy:
+                    provider = cp
+                    break
+                else:
+                    cp.invalidate_cache()
+
+        if provider is None:
+            return None, None
+
+        models = provider.get_models()
+        target_model = models[0].id if models else "unknown"
+
+        self._cli_quota.start_session(provider.name)
+        try:
+            response = await provider.complete(prompt=prompt, model=target_model)
+        except Exception as exc:
+            self._cli_quota.end_session(provider.name)
+            print(f"[ModelRouter] CLI provider '{provider.name}' error: {exc}")
+            return None, None
+
+        self._cli_quota.end_session(provider.name)
+        self._cli_quota.record_session(provider.name, duration_seconds=response.latency_ms / 1000.0)
+
+        decision = RoutingDecision(
+            task_id=task_id,
+            agent_type=profile.agent_type,
+            requested_tier=profile.budget_tier,
+            selected_model=target_model,
+            selected_provider=provider.name,
+            reason="cli_primary",
+            fallback_from=None,
+            quota_status=quota_status,
+            cost_estimate=0.0,
+            actual_cost=0.0,
+            execution_mode="cli",
+        )
+        db.add(decision)
+        await db.flush()
+
+        return response, decision
+
+    async def _try_api_route(
+        self, prompt: str, profile: TaskProfile, task_id: str | None,
+        db: AsyncSession, execution_mode: str,
+    ) -> tuple[ProviderResponse | None, RoutingDecision | None]:
+        """Try to route via an API provider."""
+        target_model = _tier_to_model(profile.budget_tier, self._config)
+
         provider, model_info, quota_status = await self._find_available_provider(
             target_model, profile, db
         )
 
-        # 2. If no provider available, try fallback tier
         fallback_from = None
         if provider is None and profile.budget_tier != "low":
             fallback_from = target_model
@@ -134,25 +266,9 @@ class ModelRouter:
                 target_model, profile, db
             )
 
-        # 3. Still no provider — log blocked decision
         if provider is None:
-            decision = RoutingDecision(
-                task_id=task_id,
-                agent_type=profile.agent_type,
-                requested_tier=profile.budget_tier,
-                selected_model="none",
-                selected_provider="none",
-                reason="all_providers_exhausted",
-                fallback_from=fallback_from,
-                quota_status="exhausted",
-                cost_estimate=0.0,
-                blocked_reason="no_provider_with_quota",
-            )
-            db.add(decision)
-            await db.flush()
-            return None, decision
+            return None, None
 
-        # 4. Budget check (only for paid providers)
         estimated_cost = provider.estimate_cost(profile.context_size, target_model)
         budget_state = await self._budget.get_state(db)
         if budget_state == "blocked" and profile.importance != "critical":
@@ -167,12 +283,12 @@ class ModelRouter:
                 quota_status=quota_status,
                 cost_estimate=estimated_cost,
                 blocked_reason="budget_exhausted",
+                execution_mode="api",
             )
             db.add(decision)
             await db.flush()
             return None, decision
 
-        # 5. Determine reason string
         reason = "auto"
         if fallback_from:
             reason = "fallback_quota_exhausted"
@@ -181,12 +297,8 @@ class ModelRouter:
         elif budget_state == "throttled":
             reason = "budget_throttle"
 
-        # 6. Execute the call
         try:
-            response = await provider.complete(
-                prompt=prompt,
-                model=target_model,
-            )
+            response = await provider.complete(prompt=prompt, model=target_model)
         except Exception:
             decision = RoutingDecision(
                 task_id=task_id,
@@ -199,23 +311,25 @@ class ModelRouter:
                 quota_status=quota_status,
                 cost_estimate=estimated_cost,
                 blocked_reason="provider_call_failed",
+                execution_mode="api",
             )
             db.add(decision)
             await db.flush()
             return None, decision
 
-        # 7. Record decision + usage
+        reason_str = "api_fallback" if execution_mode == "cli" else reason
         decision = RoutingDecision(
             task_id=task_id,
             agent_type=profile.agent_type,
             requested_tier=profile.budget_tier,
             selected_model=target_model,
             selected_provider=provider.name,
-            reason=reason,
+            reason=reason_str,
             fallback_from=fallback_from,
             quota_status=quota_status,
             cost_estimate=estimated_cost,
             actual_cost=response.cost_usd,
+            execution_mode="api",
         )
         db.add(decision)
         await db.flush()
