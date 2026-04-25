@@ -97,6 +97,9 @@ class Task(Base):
     parent_task_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("tasks.id"), nullable=True
     )
+    goal_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("goals.id"), nullable=True
+    )
     retry_count: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
@@ -536,3 +539,91 @@ class ProviderQuotaState(Base):
     reset_at: Mapped[datetime | None] = mapped_column(nullable=True)
     allow_paid_overage: Mapped[bool] = mapped_column(default=False)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+
+# ──────────────────────────────────────────────
+# Phase 3C: Goal/Run Management
+# ──────────────────────────────────────────────
+
+
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False, index=True,
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="planned", index=True,
+    )
+    type: Mapped[str] = mapped_column(String(20), nullable=False, default="execution")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    source_goal_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("goals.id"), nullable=True
+    )
+    target_description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+    tasks: Mapped[list["Task"]] = relationship(backref="goal", lazy="selectin")
+    runs: Mapped[list["Run"]] = relationship(backref="goal", lazy="selectin")
+
+
+class Run(Base):
+    __tablename__ = "runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tasks.id"), nullable=False, index=True,
+    )
+    goal_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("goals.id"), nullable=True, index=True,
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False, index=True,
+    )
+    agent_type: Mapped[str] = mapped_column(String(50), nullable=False, default="unknown")
+    worker_session_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("worker_sessions.id"), nullable=True
+    )
+    routing_decision_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("routing_decisions.id"), nullable=True
+    )
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, default="unknown")
+    model: Mapped[str] = mapped_column(String(100), nullable=False, default="unknown")
+    execution_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="simulated"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="pending", index=True,
+    )
+    retry_count: Mapped[int] = mapped_column(default=0)
+    started_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    duration_seconds: Mapped[float | None] = mapped_column(nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    failure_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    evaluator_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
+
+    events: Mapped[list["RunEvent"]] = relationship(backref="run", lazy="selectin")
+
+
+class RunEvent(Base):
+    __tablename__ = "run_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("runs.id"), nullable=False, index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    execution_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)

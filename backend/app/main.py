@@ -25,6 +25,8 @@ from app.api.models_api import router as models_api_router
 from app.api.quota import router as quota_router
 from app.api.budget import router as budget_router
 from app.api.routing import router as routing_router
+from app.api.goals import router as goals_router
+from app.api.runs import router as runs_router
 
 
 # Track connected WebSocket clients
@@ -240,6 +242,8 @@ app.include_router(models_api_router)
 app.include_router(quota_router)
 app.include_router(budget_router)
 app.include_router(routing_router)
+app.include_router(goals_router)
+app.include_router(runs_router)
 
 
 @app.get("/")

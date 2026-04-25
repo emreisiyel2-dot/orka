@@ -296,3 +296,81 @@ export interface UsageRecord {
   routing_decision_id: string | null;
   created_at: string;
 }
+
+// ──────────────────────────────────────────────
+// Phase 3C: Goal/Run Management
+// ──────────────────────────────────────────────
+
+export interface Goal {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  status: "planned" | "active" | "completed" | "paused" | "abandoned";
+  type: "execution" | "research" | "improvement";
+  source: "user" | "brainstorm" | "auto";
+  source_goal_id: string | null;
+  target_description: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface GoalProgress {
+  goal_id: string;
+  total_tasks: number;
+  completed_tasks: number;
+  progress_percent: number;
+  status: string;
+}
+
+export interface Run {
+  id: string;
+  task_id: string;
+  goal_id: string | null;
+  project_id: string;
+  agent_type: string;
+  worker_session_id: string | null;
+  routing_decision_id: string | null;
+  provider: string;
+  model: string;
+  execution_mode: "cli" | "api" | "simulated";
+  status: "pending" | "running" | "completed" | "failed" | "retrying" | "cancelled" | "blocked" | "paused";
+  retry_count: number;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  error_message: string | null;
+  failure_type: string | null;
+  evaluator_status: "pending" | "passed" | "failed" | "skipped" | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RunDetail extends Run {
+  events: RunEvent[];
+}
+
+export interface RunEvent {
+  id: string;
+  run_id: string;
+  event_type: string;
+  execution_mode: string | null;
+  provider: string | null;
+  model: string | null;
+  message: string;
+  metadata_json: string | null;
+  created_at: string;
+}
+
+export interface AgentPerformance {
+  agent_type: string;
+  total_runs: number;
+  completed: number;
+  failed: number;
+  success_rate: number;
+  avg_duration_seconds: number;
+  retry_rate: number;
+  by_execution_mode: Record<string, number>;
+  by_provider: Record<string, number>;
+}

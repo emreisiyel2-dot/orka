@@ -1,4 +1,4 @@
-import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage, BrainstormSynthesis, ModelInfo, ProviderStatus, QuotaStatus, BudgetStatus, RoutingDecision, UsageRecord } from "./types";
+import type { Project, Task, Agent, ActivityLog, MemorySnapshot, Summary, Worker, WorkerSession, WorkerSessionDetail, WorkerLog, AutonomousDecision, HealthStatus, WorkerHealthDetail, AgentMessage, TaskDependency, BrainstormRoom, BrainstormRoomDetail, BrainstormSkill, BrainstormMessage, BrainstormSynthesis, ModelInfo, ProviderStatus, QuotaStatus, BudgetStatus, RoutingDecision, UsageRecord, Goal, GoalProgress, Run, RunDetail, RunEvent, AgentPerformance } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
@@ -223,4 +223,49 @@ export const api = {
   // Usage
   getUsageRecords: (limit?: number) =>
     fetchJSON<UsageRecord[]>(`${API_BASE}/api/routing/usage${limit ? `?limit=${limit}` : ""}`),
+
+  // ──────────────────────────────────────────────
+  // Phase 3C: Goal/Run Management
+  // ──────────────────────────────────────────────
+
+  // Goals
+  getGoals: (projectId: string) =>
+    fetchJSON<Goal[]>(`${API_BASE}/api/projects/${projectId}/goals`),
+
+  createGoal: (projectId: string, data: { title: string; description?: string; type?: string; target_description?: string }) =>
+    fetchJSON<Goal>(`${API_BASE}/api/projects/${projectId}/goals`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  getGoal: (goalId: string) =>
+    fetchJSON<Goal>(`${API_BASE}/api/goals/${goalId}`),
+
+  updateGoal: (goalId: string, data: Partial<{ status: string; title: string; description: string }>) =>
+    fetchJSON<Goal>(`${API_BASE}/api/goals/${goalId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
+  getGoalProgress: (goalId: string) =>
+    fetchJSON<GoalProgress>(`${API_BASE}/api/goals/${goalId}/progress`),
+
+  // Runs
+  getProjectRuns: (projectId: string) =>
+    fetchJSON<Run[]>(`${API_BASE}/api/projects/${projectId}/runs`),
+
+  getGoalRuns: (goalId: string) =>
+    fetchJSON<Run[]>(`${API_BASE}/api/goals/${goalId}/runs`),
+
+  getTaskRuns: (taskId: string) =>
+    fetchJSON<Run[]>(`${API_BASE}/api/tasks/${taskId}/runs`),
+
+  getRun: (runId: string) =>
+    fetchJSON<RunDetail>(`${API_BASE}/api/runs/${runId}`),
+
+  getRunEvents: (runId: string) =>
+    fetchJSON<RunEvent[]>(`${API_BASE}/api/runs/${runId}/events`),
+
+  getRunPerformance: (runId: string) =>
+    fetchJSON<AgentPerformance[]>(`${API_BASE}/api/runs/${runId}/performance`),
 };

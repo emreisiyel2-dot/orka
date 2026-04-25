@@ -483,3 +483,103 @@ class PaidOverrideApprove(BaseModel):
 class TaskModelOverride(BaseModel):
     model_id: str
     provider: str
+
+
+# ──────────────────────────────────────────────
+# Phase 3C: Goal/Run Management
+# ──────────────────────────────────────────────
+
+
+class GoalCreate(BaseModel):
+    title: str
+    description: str = ""
+    project_id: str
+    source: str = "user"
+    type: str = "execution"
+    target_description: str = ""
+
+
+class GoalUpdate(BaseModel):
+    status: str | None = None
+    title: str | None = None
+    description: str | None = None
+
+
+class GoalResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    title: str
+    description: str
+    status: str
+    type: str
+    source: str
+    source_goal_id: str | None = None
+    target_description: str
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+
+
+class GoalProgressResponse(BaseModel):
+    goal_id: str
+    total_tasks: int
+    completed_tasks: int
+    progress_percent: float
+    status: str
+
+
+class RunResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    task_id: str
+    goal_id: str | None = None
+    project_id: str
+    agent_type: str
+    worker_session_id: str | None = None
+    routing_decision_id: str | None = None
+    provider: str
+    model: str
+    execution_mode: str
+    status: str
+    retry_count: int = 0
+    started_at: datetime
+    ended_at: datetime | None = None
+    duration_seconds: float | None = None
+    error_message: str | None = None
+    failure_type: str | None = None
+    evaluator_status: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RunDetailResponse(RunResponse):
+    events: list["RunEventResponse"] = []
+
+
+class RunEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    run_id: str
+    event_type: str
+    execution_mode: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    message: str
+    metadata_json: str | None = None
+    created_at: datetime
+
+
+class AgentPerformanceResponse(BaseModel):
+    agent_type: str
+    total_runs: int
+    completed: int
+    failed: int
+    success_rate: float
+    avg_duration_seconds: float
+    retry_rate: float
+    by_execution_mode: dict[str, int]
+    by_provider: dict[str, int]
