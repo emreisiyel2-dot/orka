@@ -1,6 +1,7 @@
 """Orchestrates the R&D / Improvement Lab workflow with strict status transitions."""
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -9,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import ImprovementProposal, Goal, Run, Task, Agent, ActivityLog
 from app.schemas import ApprovalGuardResponse
+
+_DEV_MODE = os.getenv("ORKA_DEV_MODE", "false").lower() == "true"
 
 
 _TRANSITIONS: dict[str, set[str]] = {
@@ -91,24 +94,11 @@ class RDManager:
     ) -> ApprovalGuardResponse:
         proposal = await self._get_proposal(proposal_id, db)
 
-        # Estimate implementation runs (4 tasks via PIPELINE)
         estimated_runs = 4
-        estimated_cost = 0.0
-        requires_paid = False
+        estimated_cost, requires_paid = await self._estimate_implementation_cost(db)
 
-        # Check if any CLI providers exist
-        try:
-            from app.providers.registry import ProviderRegistry
-            from app.config.model_config import load_config
-            config = load_config()
-            registry = ProviderRegistry(config)
-            has_cli = registry.has_cli_providers()
-        except Exception:
-            has_cli = False
-
-        if not has_cli:
-            requires_paid = True
-            estimated_cost = estimated_runs * 0.05  # rough estimate
+        warnings = []
+        blocks = []
 
         # Check budget
         budget_remaining = 0.0
@@ -121,8 +111,9 @@ class RDManager:
                 budget_fits = False
             budget_status = await bm.get_status(db)
             budget_remaining = budget_status.daily_hard_limit - budget_status.daily_spend
-        except Exception:
-            pass
+        except Exception as e:
+            budget_fits = False
+            blocks.append(f"Budget check failed: {e}. Cannot proceed without budget verification.")
 
         if estimated_cost > budget_remaining and requires_paid:
             budget_fits = False
@@ -132,13 +123,16 @@ class RDManager:
         affected = json.loads(proposal.affected_agents)
         areas = json.loads(proposal.affected_areas)
         has_breaking = risk_level in ("high", "critical")
-
-        warnings = []
-        blocks = []
         if requires_paid:
             warnings.append("Implementation requires paid API provider — no CLI available")
         if not budget_fits:
-            blocks.append(f"Budget insufficient: ${estimated_cost:.2f} needed, ${budget_remaining:.2f} remaining")
+            if _DEV_MODE:
+                warnings.append(
+                    f"[DEV MODE] Budget advisory: ${estimated_cost:.2f} needed, "
+                    f"${budget_remaining:.2f} remaining — proceeding allowed"
+                )
+            else:
+                blocks.append(f"Budget insufficient: ${estimated_cost:.2f} needed, ${budget_remaining:.2f} remaining")
         if risk_level == "critical":
             warnings.append("Proposal rated critical risk — review carefully before proceeding")
 
@@ -167,6 +161,7 @@ class RDManager:
             "requires_paid_provider": requires_paid,
             "budget_remaining_usd": budget_remaining,
             "budget_fits": budget_fits,
+            "dev_mode": _DEV_MODE,
         })
         proposal.guard_risk_assessment = json.dumps({
             "risk_level": risk_level,
@@ -193,6 +188,34 @@ class RDManager:
             warnings=guard.warnings,
             blocks=guard.blocks,
         )
+
+    async def _estimate_implementation_cost(self, db: AsyncSession) -> tuple[float, bool]:
+        """Estimate cost from actual UsageRecord data. Returns (cost, requires_paid)."""
+        try:
+            from app.models import UsageRecord
+            result = await db.execute(
+                select(UsageRecord).order_by(UsageRecord.created_at.desc()).limit(10)
+            )
+            records = list(result.scalars().all())
+
+            if records:
+                avg_cost = sum(r.cost_usd for r in records) / len(records)
+                return avg_cost * 4, any(r.cost_usd > 0 for r in records)
+        except Exception:
+            pass
+
+        # No usage records — estimate from provider config
+        try:
+            from app.providers.registry import ProviderRegistry
+            from app.config.model_config import load_config
+            config = load_config()
+            registry = ProviderRegistry(config)
+            if registry.has_cli_providers():
+                return 0.0, False
+        except Exception:
+            pass
+
+        return 4 * 0.05, True
 
     async def approve_proposal(
         self,
