@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,31 +11,49 @@ router = APIRouter(prefix="/api", tags=["runs"])
 
 
 @router.get("/projects/{project_id}/runs", response_model=list[RunResponse])
-async def list_project_runs(project_id: str, db: AsyncSession = Depends(get_db)):
+async def list_project_runs(
+    project_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(Run)
         .where(Run.project_id == project_id)
         .order_by(Run.created_at.desc())
+        .limit(limit).offset(offset)
     )
     return list(result.scalars().all())
 
 
 @router.get("/goals/{goal_id}/runs", response_model=list[RunResponse])
-async def list_goal_runs(goal_id: str, db: AsyncSession = Depends(get_db)):
+async def list_goal_runs(
+    goal_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(Run)
         .where(Run.goal_id == goal_id)
         .order_by(Run.created_at.desc())
+        .limit(limit).offset(offset)
     )
     return list(result.scalars().all())
 
 
 @router.get("/tasks/{task_id}/runs", response_model=list[RunResponse])
-async def list_task_runs(task_id: str, db: AsyncSession = Depends(get_db)):
+async def list_task_runs(
+    task_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(Run)
         .where(Run.task_id == task_id)
         .order_by(Run.created_at.desc())
+        .limit(limit).offset(offset)
     )
     return list(result.scalars().all())
 
@@ -50,11 +68,17 @@ async def get_run(run_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/runs/{run_id}/events", response_model=list[RunEventResponse])
-async def get_run_events(run_id: str, db: AsyncSession = Depends(get_db)):
+async def get_run_events(
+    run_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(RunEvent)
         .where(RunEvent.run_id == run_id)
         .order_by(RunEvent.created_at)
+        .limit(limit).offset(offset)
     )
     return list(result.scalars().all())
 
