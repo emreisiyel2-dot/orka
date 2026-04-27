@@ -192,6 +192,89 @@ async def _check_quota_resets() -> None:
             pass
 
 
+async def _archive_old_events() -> None:
+    """Move RunEvents older than 30 days to run_event_archives."""
+    from datetime import timedelta
+    from app.models import RunEvent, RunEventArchive
+
+    while True:
+        await asyncio.sleep(86400)  # daily
+        try:
+            async with async_session() as db:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+                old = await db.execute(
+                    select(RunEvent).where(RunEvent.created_at < cutoff).limit(500)
+                )
+                events = old.scalars().all()
+                for e in events:
+                    db.add(RunEventArchive(
+                        id=e.id,
+                        run_id=e.run_id,
+                        event_type=e.event_type,
+                        execution_mode=e.execution_mode,
+                        provider=e.provider,
+                        model=e.model,
+                        message=e.message,
+                        metadata_json=e.metadata_json,
+                        created_at=e.created_at,
+                    ))
+                    await db.delete(e)
+                if events:
+                    await db.commit()
+        except Exception:
+            pass
+
+
+async def _snapshot_daily_stats() -> None:
+    """Write daily statistics snapshot."""
+    from app.models import Run, DailyStats, WorkerSession
+
+    while True:
+        await asyncio.sleep(86400)  # daily
+        try:
+            async with async_session() as db:
+                today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                today_start = datetime.now(timezone.utc).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                # Check if snapshot already exists for today
+                existing = await db.execute(
+                    select(DailyStats).where(DailyStats.date == today)
+                )
+                if existing.scalars().first():
+                    continue
+
+                total = await db.execute(
+                    select(func.count()).select_from(Run).where(Run.created_at >= today_start)
+                )
+                failed = await db.execute(
+                    select(func.count()).select_from(Run).where(
+                        Run.created_at >= today_start, Run.status == "failed"
+                    )
+                )
+                avg_dur = await db.execute(
+                    select(func.avg(Run.duration_seconds)).where(
+                        Run.created_at >= today_start, Run.duration_seconds.isnot(None)
+                    )
+                )
+                active_cli = await db.execute(
+                    select(func.count()).select_from(WorkerSession).where(
+                        WorkerSession.status == "running"
+                    )
+                )
+
+                db.add(DailyStats(
+                    date=today,
+                    total_runs=total.scalar() or 0,
+                    failed_runs=failed.scalar() or 0,
+                    avg_duration_seconds=round(avg_dur.scalar() or 0.0, 2),
+                    active_cli_sessions=active_cli.scalar() or 0,
+                ))
+                await db.commit()
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: initialize DB and seed agents
@@ -205,11 +288,13 @@ async def lifespan(app: FastAPI):
     dep_task = asyncio.create_task(_resolve_dependencies_loop())
     auto_advance_task = asyncio.create_task(_auto_advance_stale_rooms())
     quota_reset_task = asyncio.create_task(_check_quota_resets())
+    archive_task = asyncio.create_task(_archive_old_events())
+    stats_task = asyncio.create_task(_snapshot_daily_stats())
 
     yield
 
     # Shutdown: cancel background tasks
-    for t in (broadcast_task, cleanup_task, stale_worker_task, dep_task, auto_advance_task, quota_reset_task):
+    for t in (broadcast_task, cleanup_task, stale_worker_task, dep_task, auto_advance_task, quota_reset_task, archive_task, stats_task):
         t.cancel()
         try:
             await t
