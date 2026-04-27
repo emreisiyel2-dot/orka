@@ -285,6 +285,7 @@ class RDManager:
         proposal.implementation_goal_id = goal.id
         proposal.status = "converted_to_goal"
         proposal.updated_at = datetime.now(timezone.utc)
+        self._log_decision(proposal, "converted_to_goal")
 
         # Log activity
         db.add(ActivityLog(
