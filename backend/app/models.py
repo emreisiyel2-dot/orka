@@ -629,6 +629,33 @@ class RunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
 
+class RunEventArchive(Base):
+    __tablename__ = "run_event_archives"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    execution_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+
+class DailyStats(Base):
+    __tablename__ = "daily_stats"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    date: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    total_runs: Mapped[int] = mapped_column(default=0)
+    failed_runs: Mapped[int] = mapped_column(default=0)
+    avg_duration_seconds: Mapped[float] = mapped_column(default=0.0)
+    active_cli_sessions: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=_utcnow)
+
+
 # ──────────────────────────────────────────────
 # Phase 4: R&D / Improvement Lab
 # ──────────────────────────────────────────────
@@ -695,6 +722,9 @@ class ImprovementProposal(Base):
     implementation_goal_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("goals.id"), nullable=True,
     )
+
+    # Decision audit trail
+    decision_log: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
