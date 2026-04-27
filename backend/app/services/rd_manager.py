@@ -240,6 +240,7 @@ class RDManager:
         proposal.reviewed_at = datetime.now(timezone.utc)
         proposal.guard_approved_by = reviewer
         proposal.guard_approved_at = datetime.now(timezone.utc)
+        self._log_decision(proposal, "approved", reviewer, notes)
         proposal.updated_at = datetime.now(timezone.utc)
         await db.flush()
         return proposal
@@ -309,6 +310,7 @@ class RDManager:
         proposal.status = "rejected"
         proposal.reviewed_by = reviewer
         proposal.review_notes = reason
+        self._log_decision(proposal, "rejected", reviewer, reason)
         proposal.reviewed_at = datetime.now(timezone.utc)
         proposal.updated_at = datetime.now(timezone.utc)
         await db.flush()
@@ -320,6 +322,7 @@ class RDManager:
         proposal = await self._get_proposal(proposal_id, db)
         self._validate_transition(proposal.status, "archived")
         proposal.status = "archived"
+        self._log_decision(proposal, "archived")
         proposal.updated_at = datetime.now(timezone.utc)
         await db.flush()
         return proposal
@@ -339,6 +342,19 @@ class RDManager:
             query = query.where(ImprovementProposal.status == status)
         result = await db.execute(query)
         return list(result.scalars().all())
+
+    def _log_decision(
+        self, proposal: ImprovementProposal, action: str,
+        reviewer: str | None = None, reason: str | None = None,
+    ) -> None:
+        log = json.loads(proposal.decision_log or "[]")
+        log.append({
+            "action": action,
+            "reviewer": reviewer,
+            "reason": reason,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+        proposal.decision_log = json.dumps(log)
 
     async def _get_proposal(self, proposal_id: str, db: AsyncSession) -> ImprovementProposal:
         result = await db.execute(
