@@ -195,6 +195,8 @@ class ModelRouter:
         self, prompt: str, profile: TaskProfile, task_id: str | None, db: AsyncSession
     ) -> tuple[ProviderResponse | None, RoutingDecision | None]:
         """Try to route via a CLI provider."""
+        from app.models import WorkerSession
+
         cli_providers = self._registry.all_by_mode()["cli"]
         if not cli_providers:
             return None, None
@@ -217,15 +219,37 @@ class ModelRouter:
         models = provider.get_models()
         target_model = models[0].id if models else "unknown"
 
+        # Create WorkerSession for CLI execution tracking
+        session = WorkerSession(
+            worker_id=f"cli-{provider.name}",
+            task_id=task_id,
+            status="running",
+        )
+        db.add(session)
+        await db.flush()
+
         self._cli_quota.start_session(provider.name)
+        response = None
         try:
             response = await provider.complete(prompt=prompt, model=target_model)
+            session.status = "completed"
+            session.exit_code = 0
         except Exception as exc:
-            self._cli_quota.end_session(provider.name)
+            session.status = "error"
+            session.exit_code = 1
             print(f"[ModelRouter] CLI provider '{provider.name}' error: {exc}")
+        finally:
+            # GUARANTEED: session always closed + quota always released
+            session.updated_at = datetime.now(timezone.utc)
+            self._cli_quota.end_session(provider.name)
+            try:
+                await db.flush()
+            except Exception:
+                pass
+
+        if response is None:
             return None, None
 
-        self._cli_quota.end_session(provider.name)
         self._cli_quota.record_session(provider.name, duration_seconds=response.latency_ms / 1000.0)
 
         decision = RoutingDecision(
