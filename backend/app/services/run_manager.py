@@ -150,17 +150,26 @@ class RunManager:
                 status=goal.status,
             )
 
-        completed_tasks = 0
-        for task in tasks:
-            run_result = await db.execute(
-                select(Run)
-                .where(Run.task_id == task.id)
-                .order_by(Run.created_at.desc())
-                .limit(1)
+        task_ids = [t.id for t in tasks]
+
+        # Get the latest run per task in one subquery
+        subq = (
+            select(Run.task_id, func.max(Run.created_at).label("max_created"))
+            .where(Run.task_id.in_(task_ids))
+            .group_by(Run.task_id)
+            .subquery()
+        )
+        latest_runs_q = await db.execute(
+            select(Run).where(
+                Run.task_id == subq.c.task_id,
+                Run.created_at == subq.c.max_created,
             )
-            latest_run = run_result.scalars().first()
-            if latest_run and latest_run.status == "completed":
-                completed_tasks += 1
+        )
+        run_by_task = {r.task_id: r for r in latest_runs_q.scalars().all()}
+        completed_tasks = sum(
+            1 for t in tasks
+            if run_by_task.get(t.id) and run_by_task[t.id].status == "completed"
+        )
 
         progress_percent = round((completed_tasks / total_tasks) * 100, 1)
 
