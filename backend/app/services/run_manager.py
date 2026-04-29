@@ -125,6 +125,19 @@ class RunManager:
         if evaluator_status is not None:
             run.evaluator_status = evaluator_status
 
+        # Phase 6A: auto-feedback
+        from app.services.feedback_service import FeedbackService
+        feedback = FeedbackService().process_run(run)
+        run.feedback_score = feedback.quality_score
+        run.failure_classification = feedback.failure_classification
+
+        # Phase 6A: auto-retry evaluation for failed runs
+        if run.status == "failed":
+            from app.services.retry_intelligence import RetryIntelligence
+            retry = RetryIntelligence().evaluate(run)
+            run.retry_eligible = retry.eligible
+            run.retry_reason = retry.reason
+
         await db.flush()
         return run
 

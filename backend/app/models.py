@@ -493,6 +493,7 @@ class RoutingDecision(Base):
     fallback_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
     considered_providers: Mapped[str | None] = mapped_column(Text, nullable=True)
     rejected_providers: Mapped[str | None] = mapped_column(Text, nullable=True)
+    learning_signals_at_decision: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     usage_records: Mapped[list["UsageRecord"]] = relationship(lazy="selectin")
@@ -612,6 +613,10 @@ class Run(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     failure_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     evaluator_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    feedback_score: Mapped[float | None] = mapped_column(nullable=True)
+    failure_classification: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    retry_eligible: Mapped[bool | None] = mapped_column(default=None)
+    retry_reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)
 

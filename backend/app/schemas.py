@@ -662,3 +662,22 @@ class ProposalConversionResponse(BaseModel):
     proposal: ImprovementProposalResponse
     implementation_goal: GoalResponse
     tasks_created: int
+
+
+# ──────────────────────────────────────────────
+# Phase 6A: Feedback / Retry / Learning
+# ──────────────────────────────────────────────
+
+
+class RunFeedbackResponse(BaseModel):
+    run_id: str
+    success: bool
+    quality_score: float
+    failure_classification: str | None
+
+
+class RetryEvaluationResponse(BaseModel):
+    eligible: bool
+    reason: str
+    strategy: str
+    max_retries: int
