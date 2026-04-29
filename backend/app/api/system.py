@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Run, RunEvent, WorkerSession
+from app.services.cli_quota_tracker import CLIQuotaTracker
 
 router = APIRouter(prefix="/api", tags=["system"])
 
@@ -41,6 +42,13 @@ async def system_stats(db: AsyncSession = Depends(get_db)):
     total_runs = total.scalar() or 0
     failed_runs = failed.scalar() or 0
 
+    tracker = CLIQuotaTracker()
+    cli_providers = {}
+    for provider_name in ("claude_code", "glm_coding"):
+        status = tracker.get_provider_status(provider_name)
+        if status:
+            cli_providers[provider_name] = status
+
     return {
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "total_runs_today": total_runs,
@@ -49,4 +57,5 @@ async def system_stats(db: AsyncSession = Depends(get_db)):
         "avg_duration_seconds_today": round(avg_dur.scalar() or 0.0, 2),
         "active_cli_sessions": active_cli.scalar() or 0,
         "total_event_count": event_count.scalar() or 0,
+        "providers": {"cli": cli_providers},
     }
