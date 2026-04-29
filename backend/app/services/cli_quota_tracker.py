@@ -19,6 +19,12 @@ class CLISessionUsage:
     status: str = "available"  # "available" | "throttled" | "blocked"
     blocked_until: datetime | None = None
     window_start: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_error: str | None = None
+    last_success_at: datetime | None = None
+    last_failure_at: datetime | None = None
+    last_health_check: datetime | None = None
+    recent_success_count: int = 0
+    recent_failure_count: int = 0
 
 
 class CLIQuotaTracker:
@@ -46,6 +52,7 @@ class CLIQuotaTracker:
         """
         self._auto_reset_if_needed(provider)
         usage = self._get_or_create(provider)
+        usage.last_health_check = datetime.now(timezone.utc)
 
         if usage.status == "blocked":
             if usage.blocked_until and datetime.now(timezone.utc) >= usage.blocked_until:
@@ -84,6 +91,8 @@ class CLIQuotaTracker:
         usage.total_commands += command_count
         usage.total_prompts += prompt_count
         usage.total_tasks += task_count
+        usage.last_success_at = datetime.now(timezone.utc)
+        usage.recent_success_count += 1
 
     def start_session(self, provider: str) -> None:
         """Track an active session start."""
@@ -100,6 +109,9 @@ class CLIQuotaTracker:
         usage = self._get_or_create(provider)
         usage.status = "blocked"
         usage.blocked_until = blocked_until
+        usage.last_error = reason
+        usage.last_failure_at = datetime.now(timezone.utc)
+        usage.recent_failure_count += 1
 
     def reset(self, provider: str) -> None:
         """Reset session counters for a provider."""
@@ -113,6 +125,62 @@ class CLIQuotaTracker:
         elapsed = (now - usage.window_start).total_seconds()
         if elapsed >= 3600:
             self._usage[provider] = CLISessionUsage(provider=provider)
+
+    def is_available(self, provider: str) -> bool:
+        usage = self._usage.get(provider)
+        if usage is None:
+            return True
+        if usage.status == "blocked":
+            if usage.blocked_until and datetime.now(timezone.utc) >= usage.blocked_until:
+                self.reset(provider)
+                return True
+            return False
+        total = usage.recent_success_count + usage.recent_failure_count
+        if total >= 3 and (usage.recent_failure_count / total) > 0.5:
+            return False
+        return True
+
+    def get_adaptive_signals(self, provider: str) -> dict:
+        usage = self._usage.get(provider)
+        if usage is None:
+            return {
+                "recent_success_rate": 1.0,
+                "recent_failure_rate": 0.0,
+                "avg_execution_time": 0.0,
+                "is_available": True,
+                "total_sessions": 0,
+            }
+        total_sessions = usage.recent_success_count + usage.recent_failure_count
+        success_rate = usage.recent_success_count / total_sessions if total_sessions > 0 else 1.0
+        failure_rate = usage.recent_failure_count / total_sessions if total_sessions > 0 else 0.0
+        avg_time = usage.total_duration_seconds / usage.session_count if usage.session_count > 0 else 0.0
+        return {
+            "recent_success_rate": round(success_rate, 3),
+            "recent_failure_rate": round(failure_rate, 3),
+            "avg_execution_time": round(avg_time, 2),
+            "is_available": self.is_available(provider),
+            "total_sessions": total_sessions,
+        }
+
+    def get_provider_status(self, provider: str) -> dict | None:
+        usage = self._usage.get(provider)
+        if usage is None:
+            return None
+        signals = self.get_adaptive_signals(provider)
+        return {
+            "provider": provider,
+            "status": usage.status,
+            "active_sessions": self._active_sessions.get(provider, 0),
+            "session_count": usage.session_count,
+            "total_commands": usage.total_commands,
+            "total_prompts": usage.total_prompts,
+            "blocked_until": usage.blocked_until.isoformat() if usage.blocked_until else None,
+            "last_error": usage.last_error,
+            "last_success_at": usage.last_success_at.isoformat() if usage.last_success_at else None,
+            "last_failure_at": usage.last_failure_at.isoformat() if usage.last_failure_at else None,
+            "last_health_check": usage.last_health_check.isoformat() if usage.last_health_check else None,
+            **signals,
+        }
 
     def get_usage(self, provider: str) -> CLISessionUsage | None:
         return self._usage.get(provider)
