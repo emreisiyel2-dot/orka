@@ -488,6 +488,11 @@ class RoutingDecision(Base):
     actual_cost: Mapped[float | None] = mapped_column(nullable=True)
     blocked_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
     execution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="api")
+    task_complexity: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    selected_cli_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    fallback_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    considered_providers: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejected_providers: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     usage_records: Mapped[list["UsageRecord"]] = relationship(lazy="selectin")
