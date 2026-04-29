@@ -8,7 +8,7 @@
 
 ## Goal
 
-Allow ORKA to execute approved, low-risk improvement proposals automatically — but only under strict safety controls with full explainability. No uncontrolled loops, no silent paid API fallback, no scheduler.
+Allow ORKA to **convert** approved, low-risk improvement proposals to Goals/Tasks automatically — but only under strict safety controls with full explainability. No uncontrolled loops, no silent paid API fallback, no scheduler, **no automatic worker execution**.
 
 ---
 
@@ -29,7 +29,7 @@ POST /api/auto/execute?dry_run=true
            │ pass
            ▼
     RDManager.convert_to_goal()
-           │
+           │  (creates Goal + Tasks only — NO worker dispatch)
            ▼
     proposal.auto_executed = true
 ```
@@ -49,7 +49,9 @@ Responsibilities:
 - For blocked candidates: set `auto_execution_skip_reason` on the proposal
 - Return structured result: `{executed: [...], skipped: [{proposal_id, reason}], dry_run: bool}`
 
-Key constraint: AutoExecutor does **not** execute arbitrary code. It only triggers the existing `convert_to_goal` pipeline which creates Goals and Tasks through `CoordinationService`.
+**Hard rule:** AutoExecutor creates Goal/Task records only. It does **not** start worker execution. Task execution remains manual or user-triggered through existing flows. Phase 6B is controlled auto-conversion, not autonomous execution.
+
+Key constraint: AutoExecutor does **not** execute arbitrary code and does **not** trigger workers. It only calls `convert_to_goal()` which creates Goals and Tasks through `CoordinationService`.
 
 ---
 
@@ -286,6 +288,7 @@ Update `ImprovementProposalResponse` to include the five new fields.
 ### Safety
 
 - [ ] No direct code execution — all paths go through `RDManager.convert_to_goal()`
+- [ ] **No worker dispatch** — AutoExecutor creates Goal/Task records only; execution remains manual or user-triggered
 - [ ] No silent paid API fallback — budget gate blocks explicitly
 - [ ] No background loops or schedulers — execution is request-triggered only
 - [ ] Every auto-execution logged in `ActivityLog` with `action="auto_executed"` or `action="auto_execution_failed"`
