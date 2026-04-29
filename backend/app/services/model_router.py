@@ -383,26 +383,31 @@ class ModelRouter:
         if provider is None:
             return None
 
-        session = WorkerSession(
-            worker_id=f"cli-{provider.name}",
-            task_id=task_id,
-            status="running",
-        )
-        db.add(session)
-        await db.flush()
+        session = None
+        if task_id is not None:
+            session = WorkerSession(
+                worker_id=f"cli-{provider.name}",
+                task_id=task_id,
+                status="running",
+            )
+            db.add(session)
+            await db.flush()
 
         self._cli_quota.start_session(provider.name)
         response = None
         try:
             response = await provider.complete(prompt=prompt, model=decision.selected_model)
-            session.status = "completed"
-            session.exit_code = 0
+            if session:
+                session.status = "completed"
+                session.exit_code = 0
         except Exception as exc:
-            session.status = "error"
-            session.exit_code = 1
+            if session:
+                session.status = "error"
+                session.exit_code = 1
             print(f"[ModelRouter] CLI provider '{provider.name}' error: {exc}")
         finally:
-            session.updated_at = datetime.now(timezone.utc)
+            if session:
+                session.updated_at = datetime.now(timezone.utc)
             self._cli_quota.end_session(provider.name)
             try:
                 await db.flush()
