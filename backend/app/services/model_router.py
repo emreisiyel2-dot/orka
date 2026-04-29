@@ -289,12 +289,16 @@ class ModelRouter:
         db: AsyncSession, execution_mode: str,
     ) -> RoutingDecision:
         """Decide which API provider to use. No execution."""
-        target_model = _tier_to_model(profile.budget_tier, self._config)
+        effective_tier = profile.budget_tier
+        if profile.complexity == "simple":
+            _tier_down = {"high": "medium", "medium": "low", "low": "low", "dynamic": "low"}
+            effective_tier = _tier_down.get(profile.budget_tier, profile.budget_tier)
+        target_model = _tier_to_model(effective_tier, self._config)
         provider, model_info, quota_status = await self._find_available_provider(
             target_model, profile, db,
         )
-        if provider is None and profile.budget_tier != "low":
-            lower_tier = "medium" if profile.budget_tier in ("high", "dynamic") else "low"
+        if provider is None and effective_tier != "low":
+            lower_tier = "medium" if effective_tier in ("high", "dynamic") else "low"
             target_model = _tier_to_model(lower_tier, self._config)
             provider, model_info, quota_status = await self._find_available_provider(
                 target_model, profile, db,
