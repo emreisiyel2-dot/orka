@@ -240,6 +240,7 @@ class RDManager:
         proposal.reviewed_at = datetime.now(timezone.utc)
         proposal.guard_approved_by = reviewer
         proposal.guard_approved_at = datetime.now(timezone.utc)
+        proposal.guard_confirmed = guard_confirmed
         self._log_decision(proposal, "approved", reviewer, notes)
         proposal.updated_at = datetime.now(timezone.utc)
         await db.flush()

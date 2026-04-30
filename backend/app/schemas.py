@@ -638,6 +638,11 @@ class ImprovementProposalResponse(BaseModel):
     review_notes: str | None = None
     reviewed_at: datetime | None = None
     implementation_goal_id: str | None = None
+    guard_confirmed: bool = False
+    auto_execution_eligible: bool = False
+    auto_executed: bool = False
+    auto_executed_at: datetime | None = None
+    auto_execution_skip_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -681,3 +686,27 @@ class RetryEvaluationResponse(BaseModel):
     reason: str
     strategy: str
     max_retries: int
+
+
+# ──────────────────────────────────────────────
+# Phase 6B: Controlled Auto Execution
+# ──────────────────────────────────────────────
+
+
+class AutoEligibleRequest(BaseModel):
+    eligible: bool
+
+
+class AutoExecuteResponse(BaseModel):
+    dry_run: bool
+    executed: list[dict]
+    skipped: list[dict]
+    timestamp: datetime
+
+
+class AutoStatusResponse(BaseModel):
+    eligible_count: int
+    last_auto_execution: datetime | None
+    velocity_remaining: int
+    recent_failure_rate: float
+    gates: dict

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, ForeignKey, Enum as SAEnum
+from sqlalchemy import String, Text, ForeignKey, Enum as SAEnum, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -735,6 +735,21 @@ class ImprovementProposal(Base):
 
     # Decision audit trail
     decision_log: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Phase 6B: Auto-execution
+    guard_confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False,
+    )
+    auto_execution_eligible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False,
+    )
+    auto_executed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False,
+    )
+    auto_executed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    auto_execution_skip_reason: Mapped[str | None] = mapped_column(
+        String(200), nullable=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=_utcnow, onupdate=_utcnow)

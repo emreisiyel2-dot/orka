@@ -29,6 +29,7 @@ from app.api.goals import router as goals_router
 from app.api.runs import router as runs_router
 from app.api.research import router as research_router
 from app.api.learning import router as learning_router
+from app.api.auto import router as auto_router
 from app.api.system import router as system_router
 
 
@@ -334,6 +335,7 @@ app.include_router(goals_router)
 app.include_router(runs_router)
 app.include_router(research_router)
 app.include_router(learning_router)
+app.include_router(auto_router)
 app.include_router(system_router)
 
 
